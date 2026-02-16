@@ -161,7 +161,10 @@ class SpeciesCollection:
             elements = {pg.Element(el) for el in elements}
 
         mono_species = mono_atomic_species(elements, permitted)
-        species = {pg.Species(el, chg) for (el, chg) in mono_species}
+        # pymatgen Species() expects (symbol: str, oxidation_state); el may be Element or str
+        def _symbol(e):
+            return e.symbol if hasattr(e, "symbol") else e
+        species = {pg.Species(_symbol(el), chg) for (el, chg) in mono_species}
         if include_poly:
             poly_species = poly_atomic_species(elements)
             species.update({PolyAtomicSpecies(comp, chg) for (comp, chg) in poly_species})

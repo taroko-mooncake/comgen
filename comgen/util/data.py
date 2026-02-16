@@ -1,17 +1,18 @@
 from enum import Enum
+from pathlib import Path
 import pymatgen.core as pg
 import json
 import csv
 from ast import literal_eval
-import pkg_resources
 
+_DATA_DIR = Path(__file__).resolve().parent / "data_files"
 _pt_data_file = "periodic_table.json"
 _poly_data_file = "common_poly_ions.txt"
 
-with open(pkg_resources.resource_filename('comgen.util.data_files', _pt_data_file)) as f:
+with open(_DATA_DIR / _pt_data_file, encoding="utf-8") as f:
     PT_DATA = json.load(f)
 
-with open(pkg_resources.resource_filename('comgen.util.data_files', _poly_data_file)) as f:
+with open(_DATA_DIR / _poly_data_file, encoding="utf-8") as f:
     ions_reader = csv.reader(f, delimiter='\t')
     POLY_DATA = {name: literal_eval(charges) for (name, charges) in ions_reader}
 

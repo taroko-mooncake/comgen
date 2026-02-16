@@ -3,11 +3,12 @@ from csv import DictReader
 import pymatgen.core as pg
 from pathlib import Path
 
-output_file = "results.txt"
-
-data_dir = Path(__file__).parent.parent / 'data'
-reps_file = data_dir / 'LiIon_reps.csv'
-ingredients_file = data_dir / 'Li_starting_materials.csv'
+examples_dir = Path(__file__).resolve().parent.parent
+data_dir = examples_dir / "data"
+output_dir = examples_dir / "output"
+output_file = output_dir / "li_starting_materials.txt"
+reps_file = data_dir / "LiIon_reps.csv"
+ingredients_file = data_dir / "Li_starting_materials.csv"
 
 distance = 5
 num_results = 20
@@ -57,9 +58,11 @@ query.exclude(excluded)
 
 query.total_atoms(lb=10, ub=15)
 
-with open(output_file, 'w') as f_out:
-    i = 0
-    while i < num_results:
-        res, model = query.get_next(as_frac=True)
-        f_out.write(str(res)+'\n')
-        i += 1
+output_dir.mkdir(parents=True, exist_ok=True)
+with open(output_file, "w", encoding="utf-8") as f_out:
+    for _ in range(num_results):
+        out = query.get_next(as_frac=True)
+        if out is None:
+            break
+        res, _ = out
+        f_out.write(str(res) + '\n')

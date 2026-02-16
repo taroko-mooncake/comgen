@@ -1,5 +1,5 @@
 README.md
-setup.py
+pyproject.toml
 comgen/__init__.py
 comgen.egg-info/PKG-INFO
 comgen.egg-info/SOURCES.txt
@@ -16,3 +16,9 @@ comgen/query/__init__.py
 comgen/query/base.py
 comgen/query/common.py
 comgen/query/ionic.py
+comgen/util/data.py
+comgen/util/species.py
+comgen/util/data_files/__init__.py
+comgen/util/data_files/common_poly_ions.txt
+comgen/util/data_files/periodic_table.json
+comgen/util/data_files/pettifor.json

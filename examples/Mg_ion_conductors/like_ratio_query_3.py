@@ -1,10 +1,13 @@
-from comgen import SpeciesCollection, IonicComposition
-from csv import DictReader 
-import pymatgen.core as pg
+from pathlib import Path
 from fractions import Fraction
 
+from comgen import SpeciesCollection, IonicComposition
+import pymatgen.core as pg
+
+examples_dir = Path(__file__).resolve().parent.parent
+output_dir = examples_dir / "output"
+output_file = output_dir / "mg_like_ratio_3.txt"
 num_results = 3
-output_file = 'results.txt'
 
 def like_Li6PS5Cl(denom):
     Mg = {'Mg'}
@@ -35,12 +38,14 @@ def like_Li6PS5Cl(denom):
     query.include_species_quantity(sps1, Fraction(1, denom))
     query.include_species_quantity(sps2, Fraction(6, denom)) 
 
-    with open(output_file, 'a') as f_out:
-        i = 0
-        while i < num_results:
-            res, model = query.get_next(as_frac=True)
-            f_out.write(str(res)+'\n')
-            i += 1
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with open(output_file, "a", encoding="utf-8") as f_out:
+        for _ in range(num_results):
+            out = query.get_next(as_frac=True)
+            if out is None:
+                break
+            res, _ = out
+            f_out.write(str(res) + '\n')
 
 for n in range(10, 14):
     like_Li6PS5Cl(n)

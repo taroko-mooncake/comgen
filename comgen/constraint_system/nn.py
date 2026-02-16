@@ -1,10 +1,19 @@
 from z3 import Real, Sum, And
-import onnx
+try:
+    import onnx
+except ImportError:
+    onnx = None  # optional dependency: pip install comgen[onnx]
+
 import numpy as np
 from comgen.constraint_system.common import ReLU
 
 class ONNX:
     def __init__(self, onnx_model, constraint_log):
+        if onnx is None:
+            raise ImportError(
+                "onnx is required for ONNX/category_prediction. "
+                "Install with: pip install comgen[onnx]"
+            )
         self.name = f'onnx{id(self)}'
         self.onnx_model = onnx_model
         self.initNames = [node.name for node in onnx_model.graph.initializer]
