@@ -22,5 +22,5 @@ query = IonicComposition(sps)
 
 query.distinct_elements(4)
 query.include_elements_quantity({'O'}, 12/20)
-query.radius_ratio(sps.having_charge(2), sps.having_charge(3), cn1='VIII', cn2='VI', lb=1.5, ub=1.9)
+query.ion_pair_radius_ratio(sps.having_charge(2), sps.having_charge(3), cn1='VIII', cn2='VI', lb=1.5, ub=1.9)
 print(query.get_next())
