@@ -1,3 +1,12 @@
+"""
+Core composition constraint system.
+
+Defines :class:`TargetComposition` (normalised element and species quantity
+variables with charge-balance and electronegativity constraints) and
+:class:`UnitCell` (integer atom counts per species that link back to the
+normalised composition).
+"""
+
 import warnings
 from fractions import Fraction
 
@@ -12,7 +21,28 @@ from comgen.constraint_system.common import (
     bound_weighted_average_value_ratio,
 )
 
+
 class TargetComposition:
+    """Z3 variable system representing a normalised composition.
+
+    For each permitted species a real-valued quantity variable is created, and
+    for each element (possibly shared across polyatomic species) a
+    corresponding element-quantity variable is defined.  Base constraints
+    ensure non-negativity, element--species consistency, and that element
+    fractions sum to 1.
+
+    Args:
+        permitted_species: A :class:`~comgen.SpeciesCollection` of allowed
+            ionic species.
+        constraint_log: Mutable list to which Z3 constraints are appended.
+        return_vars: Mutable list of Z3 variables whose values will be
+            extracted from satisfying models.
+
+    Raises:
+        TypeError: If *permitted_species* is not a
+            :class:`~comgen.SpeciesCollection`.
+    """
+
     def __init__(self, permitted_species, constraint_log, return_vars):
         if not isinstance(permitted_species, SpeciesCollection): 
             raise TypeError("permitted_species argument must be a SpeciesCollection.")
@@ -29,31 +59,41 @@ class TargetComposition:
         self._setup()
 
     def _new_element_quantity_var(self, el):
+        """Create a Z3 Real variable for the normalised quantity of *el*."""
         el_id = str(el)
         var = Real(f'{self.name}_{el_id}_elementquantity')
         self.element_quantity_variable_collection[el_id] = var
         self.return_vars.append(var)
 
     def _new_species_quantity_var(self, sp):
+        """Create a Z3 Real variable for the normalised quantity of *sp*."""
         sp_id = str(sp)
         var = Real(f'{self.name}_{sp_id}_speciesquantity')
         self.species_quantity_variable_collection[sp_id] = var
         self.return_vars.append(var)
 
     def _setup(self):
+        """Initialise variables and add foundational constraints.
+
+        1. Create a species-quantity variable for every permitted species and
+           an element-quantity variable for every element.
+        2. Constrain all quantities to be >= 0.
+        3. For each element, require that the sum of contributing species
+           quantities (weighted by multiplicity for polyatomic species)
+           equals the element quantity.
+        4. Require element quantities to sum to 1 (normalisation).
+        """
         for sp in self.permitted_species:
             self._new_species_quantity_var(sp)
         for el in self.elements:
             self._new_element_quantity_var(el)
         
-        # add basic constraints to give correct semantics to the objects variables
-        # 1. element and species quantities must be non-negative
         for sp in self.permitted_species:
             self.cons.append(self.species_quantity_vars(sp) >= 0)
         for el in self.elements:
             self.cons.append(self.element_quantity_vars(el) >= 0)
 
-        # 2. total species quantity equals corresponding element quantity
+        # species-to-element linkage: weighted sum of species = element quantity
         for el, sps in self.permitted_species.group_by_element_view().items():
             sps_vars, sps_weights = [], []
             for sp in sps:
@@ -65,15 +105,26 @@ class TargetComposition:
             
             self.cons.append(Sum([var*weight for var, weight in zip(sps_vars, sps_weights)]) == self.element_quantity_vars(el))
 
-        # 3. total element quantity is 1
+        # normalisation: all element fractions sum to 1
         vars = [self.element_quantity_vars(el) for el in self.elements]
         self.cons.append(Sum(*vars) == 1)
 
     @property
     def elements(self):
+        """The set of elements covered by the permitted species."""
         return self.permitted_species.group_by_element_view().keys()
 
-    def element_quantity_vars(self, el=None): # ideally these wouldn't be available as public methods. with a reason we can pass out the vars but what they represent shouldn't be known. 
+    def element_quantity_vars(self, el=None):
+        """Return Z3 variable(s) for element quantities.
+
+        Args:
+            el: Element identifier (``str`` or pymatgen Element). If
+                ``None``, returns the full ``{element: var}`` dict.
+
+        Returns:
+            A single Z3 ``Real`` variable, or a dict of all element
+            variables.
+        """
         if el is not None and not isinstance(el, str): el = str(el)
 
         if el:
@@ -81,6 +132,16 @@ class TargetComposition:
         return self.element_quantity_variable_collection
     
     def species_quantity_vars(self, sp=None):
+        """Return Z3 variable(s) for species quantities.
+
+        Args:
+            sp: Species identifier (``str`` or pymatgen Species). If
+                ``None``, returns the full ``{species: var}`` dict.
+
+        Returns:
+            A single Z3 ``Real`` variable, or a dict of all species
+            variables.
+        """
         if sp is not None and not isinstance(sp, str): sp = str(sp)
 
         if sp:
@@ -88,9 +149,14 @@ class TargetComposition:
         return self.species_quantity_variable_collection    
 
     def balance_charges(self, return_constraint=False):
-        """Weighted sum of atom charges is zero.
-            respect_electronegativity: if this is True then we require that 
+        """Add a charge-neutrality constraint: Σ (species_qty * charge) == 0.
 
+        Args:
+            return_constraint: If ``True``, return the constraint instead of
+                appending it to the log.
+
+        Returns:
+            Z3 constraint if *return_constraint* is ``True``, else ``None``.
         """
         sps_quants = [self.species_quantity_vars(str(sp)) for sp in self.permitted_species]
         sps_charges = [sp.oxi_state for sp in self.permitted_species]
@@ -101,15 +167,25 @@ class TargetComposition:
         self.cons.append(balance_charge_cons)
 
     def restrict_charge_by_electronegativity(self, return_constraint=False):
-        """ no element can have both positively and negatively charged ions in the same composition
-            all positively charged ions must have lower e-neg than all negatively charged ions
+        """Enforce electronegativity ordering on ion charges.
+
+        No element may simultaneously contribute both positive and negative
+        ions.  Furthermore, every positively charged ion must belong to an
+        element with lower electronegativity than any negatively charged ion.
+
+        Args:
+            return_constraint: If ``True``, return the constraint instead of
+                appending it.
+
+        Returns:
+            Z3 constraint if *return_constraint* is ``True``, else ``None``.
         """
         elt_grouped_sps = self.permitted_species.group_by_element_view()
         eneg_cons = []
         
         pos, neg = {}, {}
         for elt, sps in elt_grouped_sps.items():
-            sps = {sp for sp in sps if isinstance(sp, pg.Species)} # remove polyatomic species
+            sps = {sp for sp in sps if isinstance(sp, pg.Species)}
             pos[str(elt)] = Or([self.species_quantity_vars(str(sp)) > 0 for sp in sps if sp.oxi_state > 0])
             neg[str(elt)] = Or([self.species_quantity_vars(str(sp)) > 0 for sp in sps if sp.oxi_state < 0])
 
@@ -125,7 +201,17 @@ class TargetComposition:
         self.cons.append(And(eneg_cons))
 
     def count_elements_from(self, elements: set, exact: int=None, return_constraint=False, *, lb: int=None, ub: int=None):
-        """Constrain the number of elements included from the given sets 
+        """Constrain how many elements from the given set have non-zero quantity.
+
+        Args:
+            elements: Set of element symbols or pymatgen Elements to consider.
+            exact: Require exactly this many to be present.
+            return_constraint: Return rather than append the constraint.
+            lb: Minimum count of elements present (inclusive).
+            ub: Maximum count of elements present (inclusive).
+
+        Returns:
+            Z3 constraint if *return_constraint* is ``True``, else ``None``.
         """
         count_elts_present = Sum([self.element_quantity_vars(str(elt)) > 0 for elt in elements])
         bound_elts_present_cons = apply_bounds(count_elts_present, exact, lb=lb, ub=ub)
@@ -135,16 +221,43 @@ class TargetComposition:
         self.cons.append(bound_elts_present_cons)
     
     def count_elements(self, exact: int=None, return_constraint=False, *, lb: int=None, ub: int=None):
-        """Constrain the number of elements included in the composition
+        """Constrain the total number of distinct elements in the composition.
+
+        Equivalent to calling :meth:`count_elements_from` with all elements.
+
+        Args:
+            exact: Require exactly this many distinct elements.
+            return_constraint: Return rather than append the constraint.
+            lb: Minimum count (inclusive).
+            ub: Maximum count (inclusive).
+
+        Returns:
+            Z3 constraint if *return_constraint* is ``True``, else ``None``.
         """
         elements = {str(elt) for elt in self.elements}
         return self.count_elements_from(elements, exact, return_constraint, lb=lb, ub=ub)
 
     def fit_to_cell(self, unit_cell):
+        """Link this composition to a :class:`UnitCell` so that quantities
+        become integer multiples of a common formula unit.
+
+        Args:
+            unit_cell: A :class:`UnitCell` instance.
+        """
         return unit_cell.fit_composition(self.species_quantity_vars())
 
     def bound_elements_quantity(self, elements: set, exact: float=None, return_constraint=False, *, lb: float=None, ub: float=None):
-        """Constraint the total quantity across elements in the given set.
+        """Bound the sum of normalised quantities for the given elements.
+
+        Args:
+            elements: Set of element symbols.
+            exact: Fix the total to this value.
+            return_constraint: Return rather than append the constraint.
+            lb: Lower bound (inclusive).
+            ub: Upper bound (inclusive).
+
+        Returns:
+            Z3 constraint if *return_constraint* is ``True``, else ``None``.
         """
         total_elts_quantity = Sum([self.element_quantity_vars(str(elt)) for elt in elements])
         bound_elts_quantity_cons = apply_bounds(total_elts_quantity, exact, lb=lb, ub=ub)
@@ -154,7 +267,17 @@ class TargetComposition:
         self.cons.append(bound_elts_quantity_cons)
 
     def bound_species_quantity(self, sps: set, exact: float=None, return_constraint=False, *, lb: float=None, ub: float=None):
-        """Constraint the total quantity across species in the given set.
+        """Bound the sum of normalised quantities for the given species.
+
+        Args:
+            sps: Set of species identifiers (strings or pymatgen Species).
+            exact: Fix the total to this value.
+            return_constraint: Return rather than append the constraint.
+            lb: Lower bound (inclusive).
+            ub: Upper bound (inclusive).
+
+        Returns:
+            Z3 constraint if *return_constraint* is ``True``, else ``None``.
         """
         total_sps_quantity = Sum([self.species_quantity_vars(str(sp)) for sp in sps])
         bound_sps_quantity_cons = apply_bounds(total_sps_quantity, exact, lb=lb, ub=ub)
@@ -164,11 +287,20 @@ class TargetComposition:
         self.cons.append(bound_sps_quantity_cons)
 
     def exclude_composition(self, composition, precision=0.1, return_constraint=False):
-        """Exclude a composition from the composition space. 
-        
+        """Exclude a specific composition from the feasible region.
+
+        A composition is considered "excluded" if *all* element quantities
+        fall within ``±precision`` of the given values.  The added constraint
+        is the negation of that conjunction.
+
         Args:
-            composition (dict): composition to exclude
-            precision (float): tolerance for excluding composition
+            composition: A dict ``{element: quantity}`` or pymatgen
+                ``Composition``.
+            precision: Tolerance around each element quantity.
+            return_constraint: Return rather than append the constraint.
+
+        Returns:
+            Z3 constraint if *return_constraint* is ``True``, else ``None``.
         """
         if isinstance(composition, pg.Composition):
             composition = dict(composition)
@@ -176,16 +308,25 @@ class TargetComposition:
         cons = []
         for elt, quant in composition.items():
             lb, ub = quant - precision, quant + precision
-            # get constraint that fixes quantity close to this solution
             cons.append(apply_bounds(self.element_quantity_vars(elt), lb=lb, ub=ub))
         
-        exclude_cons = Not(And(cons)) # not all quantities are close to this solution
+        exclude_cons = Not(And(cons))
         if return_constraint:
             return exclude_cons
         self.cons.append(exclude_cons)
 
     def select_species_pair(self, pairs, return_constraint=False):
-        """Select at least one pair from those given.
+        """Require at least one species pair from the given list to be present.
+
+        Both species in a pair must have non-zero quantity for the pair to
+        be "selected".
+
+        Args:
+            pairs: Iterable of ``(species_str, species_str)`` tuples.
+            return_constraint: Return rather than append the constraint.
+
+        Returns:
+            Z3 constraint if *return_constraint* is ``True``, else ``None``.
         """
         sps_quants = self.species_quantity_vars()
         select_cons = []
@@ -197,7 +338,17 @@ class TargetComposition:
         self.cons.append(Or(select_cons))
 
     def exclude_species_pairs(self, pairs, return_constraint=False):
-        """Do not include both species from the pairs given.
+        """Forbid both species in each listed pair from co-occurring.
+
+        For every listed pair, at least one of the two species must have
+        zero quantity.
+
+        Args:
+            pairs: Iterable of ``(species_str, species_str)`` tuples.
+            return_constraint: Return rather than append the constraint.
+
+        Returns:
+            Z3 constraint if *return_constraint* is ``True``, else ``None``.
         """
         sps_quants = self.species_quantity_vars()
         exclude_cons = []
@@ -212,7 +363,20 @@ class TargetComposition:
         self.cons.append(And(exclude_cons))
 
     def bound_average_species_value_ratio(self, sps_1, sps_2, return_constraint=False, *, lb: float=None, ub: float=None):
-        """Constrain the ratio of the average value of species in two sets.
+        """Bound the ratio of weighted-average values for two species groups.
+
+        The "value" of each species is the dict-value in *sps_1* / *sps_2*,
+        weighted by the species quantity variables.
+
+        Args:
+            sps_1: Dict ``{species_str: value}`` for the first group.
+            sps_2: Dict ``{species_str: value}`` for the second group.
+            return_constraint: Return rather than append the constraint.
+            lb: Lower bound on the ratio (inclusive).
+            ub: Upper bound on the ratio (inclusive).
+
+        Returns:
+            Z3 constraint if *return_constraint* is ``True``, else ``None``.
         """
         sps_quants = self.species_quantity_vars()
         vars_1 = [sps_quants[sp] for sp in sps_1.keys()]
@@ -226,10 +390,37 @@ class TargetComposition:
         self.cons.append(ratio_cons)
 
     def synthesise_from(self, synthesis, return_constraint=False):
+        """Link this composition to a :class:`Synthesis` constraint system.
+
+        Args:
+            synthesis: A :class:`~comgen.constraint_system.Synthesis` instance.
+            return_constraint: Return rather than append the constraint.
+
+        Returns:
+            Z3 constraint if *return_constraint* is ``True``, else ``None``.
+        """
         return synthesis.fix_product(self.element_quantity_vars(), return_constraint)
 
     def bound_distance(self, other, calculator, return_constraint=False, *, ub=None, lb=None):
-        """Constrain the distance between this composition and another given a calculator whose metric acts on normed element quantities.
+        """Bound the distance between this composition and another.
+
+        The distance is computed by *calculator* (e.g. :class:`EMD`) over
+        normalised element-quantity vectors.
+
+        Args:
+            other: A ``str``, pymatgen ``Composition``, or another
+                :class:`TargetComposition`.
+            calculator: A :class:`~comgen.constraint_system.Distance`
+                subclass instance (e.g. :class:`EMD`).
+            return_constraint: Return rather than append the constraint.
+            ub: Upper bound on the distance.
+            lb: Lower bound on the distance.
+
+        Returns:
+            Z3 constraint if *return_constraint* is ``True``, else ``None``.
+
+        Raises:
+            ValueError: If *other* is not a recognised type.
         """
         elt_vars = {self.name: self.element_quantity_vars()}
         
@@ -244,12 +435,22 @@ class TargetComposition:
         else:
             raise ValueError(f'Expected TargetComposition or pymatgen Composition object. Received type {type(other)}.')
         
-        bound_dist_cons = calculator.bound_distance(elt_vars, lb, ub) # this relies on the returned constraints being ONLY those which represent the bound, not those that define the distance measure. 
+        bound_dist_cons = calculator.bound_distance(elt_vars, lb, ub)
         if return_constraint:
             return bound_dist_cons
         self.cons.append(bound_dist_cons)
 
     def property_predictor_category(self, model, n):
+        """Encode an ONNX property-prediction model and constrain output class.
+
+        The composition's element quantities (ordered by atomic number) are
+        fed into the model, and the solver is required to make class *n*
+        the argmax of the output layer.
+
+        Args:
+            model: An :class:`~comgen.constraint_system.ONNX` instance.
+            n: Target output class index.
+        """
         vars = self.element_quantity_vars()
         vars = [(pg.Element(elt).Z, var) for elt, var in vars.items()]
         vars.sort(key=lambda x: x[0])
@@ -259,6 +460,18 @@ class TargetComposition:
         model.select_class(n)
 
     def format_solution(self, model, as_frac=False):
+        """Extract element quantities from a Z3 model into a Python dict.
+
+        Zero-quantity elements are omitted.
+
+        Args:
+            model: A satisfying Z3 model.
+            as_frac: If ``True``, values are :class:`~fractions.Fraction`;
+                otherwise ``float`` rounded to 3 decimal places.
+
+        Returns:
+            dict mapping element ``str`` to quantity.
+        """
         out = {elt: model[elt_var] 
                for elt, elt_var in self.element_quantity_vars().items() 
                if model[elt_var].numerator_as_long() != 0}
@@ -273,7 +486,22 @@ class TargetComposition:
     def __str__(self):
         return self.name
 
+
 class UnitCell:
+    """Integer atom-count variables for a unit cell.
+
+    Creates one integer count variable per species and a total-atom-count
+    variable that can be bounded.  When linked to a
+    :class:`TargetComposition` via :meth:`fit_composition`, the normalised
+    species fractions are forced to correspond to integer stoichiometries.
+
+    Args:
+        permitted_species: A :class:`~comgen.SpeciesCollection` of allowed
+            ionic species (must match the associated composition).
+        constraint_log: Mutable list for Z3 constraints.
+        return_vars: Mutable list of Z3 variables to monitor.
+    """
+
     def __init__(self, permitted_species: SpeciesCollection, constraint_log, return_vars):
         self.name = f'UnitCell{str(id(self))}'
         self.cons = constraint_log
@@ -289,17 +517,28 @@ class UnitCell:
         self._setup()
 
     def _new_species_count_var(self, sp):
+        """Create a Z3 Int variable for the count of species *sp* in the cell."""
         sp_id = str(sp)
         var = Int(f'{self.name}_{sp_id}_speciescount')
         self.species_count_variable_collection[sp_id] = var
         self.return_vars.append(var)
 
     def _setup(self):
+        """Create integer count variables for every species and for total atoms."""
         for sp in self.permitted_species:
             self._new_species_count_var(sp)
         self.num_atoms_variable = Int(f'{self.name}_numatoms')
 
     def species_count_vars(self, sp=None):
+        """Return Z3 integer count variable(s) for species.
+
+        Args:
+            sp: Species identifier. If ``None``, returns the full dict.
+
+        Returns:
+            A single Z3 ``Int`` variable, or the entire ``{species: var}``
+            dict.
+        """
         if sp is not None and not isinstance(sp, str): sp = str(sp)
 
         if sp:
@@ -307,10 +546,21 @@ class UnitCell:
         return self.species_count_variable_collection
 
     def fit_composition(self, species_quantities):
-        """
-        params:
-            species_quantities: dict {sp: float or z3.Real}
-                for each species, either a fixed quantity (assumed to be in [0,1]) or a variable representing the normed quantity.
+        """Link normalised species fractions to integer atom counts.
+
+        For every possible total atom count *n* in ``[lb, ub]``, adds
+        implications of the form ``num_atoms == n  =>  count_sp == qty_sp * n``
+        for each species.
+
+        Args:
+            species_quantities: Dict ``{species_str: Z3 Real or float}``
+                mapping each species to its normalised quantity variable.
+
+        Raises:
+            AssertionError: If the species set does not match the cell's
+                permitted species.
+            ValueError: If atom-count bounds have not been set via
+                :meth:`bound_total_atoms_count`.
         """
         assert self.permitted_species == set(species_quantities.keys()), 'Cell and composition must use the same species.'
         if self.num_atoms_ub is None:
@@ -323,12 +573,32 @@ class UnitCell:
             self.cons.extend(relate_quantities_cons)
 
     def bound_total_atoms_count(self, lb, ub):
-        self.num_atoms_lb = lb # record the bounds so they can be used for fitting composition
+        """Set lower and upper bounds on the total number of atoms.
+
+        Also records the bounds internally so that :meth:`fit_composition`
+        knows the range of *n* to enumerate.
+
+        Args:
+            lb: Minimum total atoms (inclusive).
+            ub: Maximum total atoms (inclusive).
+        """
+        self.num_atoms_lb = lb
         self.num_atoms_ub = ub
         total_atoms_constraint = apply_bounds(self.num_atoms_variable, lb=lb, ub=ub)
         self.cons.append(total_atoms_constraint)
 
     def bound_elements_count(self, elements, exact=None, *, lb=None, ub=None):
+        """Bound the total integer atom count for a set of elements.
+
+        Sums the species counts (weighted by multiplicity for polyatomic
+        species) for every species belonging to the given elements.
+
+        Args:
+            elements: Iterable of element symbol strings.
+            exact: Fix the count to this value.
+            lb: Minimum count (inclusive).
+            ub: Maximum count (inclusive).
+        """
         grouped_sps = {str(el): sps for el, sps in self.permitted_species.group_by_element_view().items()}
         sps_counts = []
         for el in elements:

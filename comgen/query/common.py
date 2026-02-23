@@ -1,8 +1,21 @@
+"""
+Shared utilities for the query layer.
+
+Provides the modified Pettifor scale mapping used by the Earth Mover's
+Distance metric, and a helper for looking up Shannon ionic radii through
+pymatgen.
+"""
+
 import warnings
 import pymatgen.core as pg
 
 PETTIFOR_KEYS = tuple(range(0, 103))
+"""Ordered indices for the modified Pettifor scale (0--102 inclusive)."""
 
+# Modified Pettifor numbers that map each element symbol to an integer
+# position on a 1-D chemical scale.  Elements that are close on this scale
+# tend to be chemically similar, which makes it a natural basis for the
+# Earth Mover's Distance between compositions.
 MOD_PETTI = {"D": 102, "T": 102, "H": 102, "He": 0, "Li": 11, 
 "Be": 76, "B": 85, "C": 86, "N": 87, "O": 96, "F": 101, 
 "Ne": 1, "Na": 10, "Mg": 72, "Al": 77, "Si": 84, "P": 88, 
@@ -22,13 +35,40 @@ MOD_PETTI = {"D": 102, "T": 102, "H": 102, "He": 0, "Li": 11,
 "Rf": 0, "Db": 0, "Sg": 0, "Bh": 0, "Hs": 0, "Mt": 0, "Ds": 0, "Rg": 0, 
 "Cn": 0, "Nh": 0, "Fl": 0, "Mc": 0, "Lv": 0, "Ts": 0, "Og": 0, "Uue": 0}
 
+
 def element_to_pettifor(elt):
+    """Return the modified Pettifor number for an element.
+
+    Args:
+        elt: An element symbol (``str``) or a :class:`pymatgen.core.Element`.
+
+    Returns:
+        int: The Pettifor index (0--102).
+    """
     if isinstance(elt, str):
         elt = pg.Element(elt)
     assert isinstance(elt, pg.Element), elt
     return MOD_PETTI[elt.symbol]
 
+
 def get_radii(sps, cn=None):
+    """Look up Shannon ionic radii for a collection of species.
+
+    When a coordination number (*cn*) is given, crystal-type Shannon radii
+    for the "High Spin" state are retrieved.  If no *cn* is given, the
+    default :pyattr:`ionic_radius` from pymatgen is used instead.
+
+    Species for which the requested radius is unavailable (``KeyError``)
+    are silently skipped.
+
+    Args:
+        sps: A :class:`~comgen.util.species.SpeciesCollection` of ionic
+            species.
+        cn: Optional coordination number string (e.g. ``"VI"``, ``"VIII"``).
+
+    Returns:
+        dict mapping species string to its radius (``float``).
+    """
     radii = {}
     if cn is not None:
         for sp in sps.ungrouped_view():
@@ -43,5 +83,3 @@ def get_radii(sps, cn=None):
     else:
         radii = {str(sp): sp.ionic_radius for sp in sps.ungrouped_view()}
     return radii
-
-
