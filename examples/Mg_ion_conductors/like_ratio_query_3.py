@@ -1,3 +1,9 @@
+"""Generate Mg-ion compositions in Li6PS5Cl-like stoichiometry across multiple sizes.
+
+Uses the same radius-ratio constraints as like_ratio_query. Loops over total
+atom counts 10-13; for each size n, constrains Mg in [3/n, 6/n], one cation 1/n,
+anions 6/n (Li6PS5Cl-like). Appends all results to mg_like_ratio_3.txt.
+"""
 from pathlib import Path
 from fractions import Fraction
 

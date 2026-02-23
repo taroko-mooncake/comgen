@@ -33,7 +33,7 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 examples_dir = _script_dir.parent
-data_dir = examples_dir / "Li_ion_conductors" / "data"
+data_dir = examples_dir / "data"
 output_dir = examples_dir / "output"
 output_file = output_dir / "li_starting_materials.txt"
 reps_file = data_dir / "LiIon_reps.csv"

@@ -1,3 +1,9 @@
+"""Generate Mg-ion compositions with Li-conductor-like ion-pair radius ratios.
+
+Constrains Mg-cation and Mg-anion radius ratios to ranges typical of Li-ion
+conductors (e.g. 1.55-1.85 and 0.45-0.55). Uses fixed 13-atom stoichiometry:
+Mg 6/13, one cation 1/13, anions 6/13. Writes results to mg_like_ratio.txt.
+"""
 from pathlib import Path
 from fractions import Fraction
 

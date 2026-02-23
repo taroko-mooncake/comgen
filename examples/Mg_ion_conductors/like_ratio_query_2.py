@@ -1,3 +1,9 @@
+"""Generate Mg-ion compositions with relaxed stoichiometry and radius-ratio constraints.
+
+Same ion-pair radius-ratio ranges as like_ratio_query (Mg-cation 1.55-1.85,
+Mg-anion 0.45-0.55), but with relaxed composition: Mg between 3/13 and 6/13,
+cations >= 1/13; anion fraction is not fixed. Writes results to mg_like_ratio_2.txt.
+"""
 from pathlib import Path
 from fractions import Fraction
 

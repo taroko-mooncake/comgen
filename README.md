@@ -68,6 +68,7 @@ Examples and tests assume the **comgen** package is on `PYTHONPATH`. Run from th
 cd /path/to/comgen
 python examples/run_example.py   # recommended first run
 python examples/garnet/query.py
+python examples/perovskite/ABX3.py
 python examples/Li_ion_conductors/distance_query.py
 # etc.
 ```
@@ -205,6 +206,7 @@ All example scripts that write results save to **`examples/output/`** (one file 
 | **Mg_ion_conductors/like_ratio_query_2.py** | Same radius-ratio idea with looser Mg and anion bounds. | `examples/output/mg_like_ratio_2.txt` |
 | **Mg_ion_conductors/like_ratio_query_3.py** | Same radius-ratio idea over formula sizes 10–13 atoms; appends results for each size. | `examples/output/mg_like_ratio_3.txt` |
 | **garnet/query.py** | Garnet-like compositions (+2/+3 cations, SiO₄ anion, radius ratio). Prints one result and writes to output. | `examples/output/garnet_query.txt` |
+| **perovskite/ABX3.py** | ABX₃ organic–inorganic perovskite candidates (A = MA/Cs/FA/GA, B = Pb/Sn/…, X = Cl/Br/I). Optional ONNX stability filter. | `examples/output/perovskite_ABX3_candidates.txt` |
 | **low_formation_energy/query.py** | Compositions classified as a given stability category by an ONNX model. Requires `.[onnx]` and the model file. | `examples/output/low_formation_energy_query.txt` |
 
 ### Optional: ONNX (low formation energy example)

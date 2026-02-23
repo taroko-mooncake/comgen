@@ -1,3 +1,10 @@
+"""Generate Mg-ion compositions that are close to filtered Li-ion conductors.
+
+Loads Li-ion compositions from LiIonDatabase.csv (filtered by conductivity
+target >= 1e-3 S/cm and temperature 15-35 °C), then enumerates Mg-ion
+compositions within a given distance of at least one of them. Explores
+Mg analogues of good Li-ion conductors.
+"""
 from comgen import SpeciesCollection, IonicComposition
 from csv import DictReader 
 from pathlib import Path

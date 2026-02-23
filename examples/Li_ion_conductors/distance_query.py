@@ -1,10 +1,17 @@
+"""Generate Li-ion compositions that are far from known representatives.
+
+Loads representative compositions from LiIon_reps.csv and enumerates new
+Li-ion compositions that are at least a given distance away from all of them.
+Explores novel compositions distinct from the reference set. Writes results
+to li_distance_query.txt.
+"""
 from comgen import SpeciesCollection, IonicComposition
 from csv import DictReader 
 import pymatgen.core as pg
 from pathlib import Path
 
 examples_dir = Path(__file__).resolve().parent.parent
-data_dir = examples_dir / "Li_ion_conductors" / "data"
+data_dir = examples_dir / "data"
 output_dir = examples_dir / "output"
 output_file = output_dir / "li_distance_query.txt"
 reps_file = data_dir / "LiIon_reps.csv"

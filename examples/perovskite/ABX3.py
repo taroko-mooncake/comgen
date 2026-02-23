@@ -426,7 +426,7 @@ if __name__ == "__main__":
     cands = generate_candidates(
         n=50,
         elmd_distance=3,
-        elmd_mode="close_to",
+        elmd_mode="far_from",
         n_initial=10,
     )
 
