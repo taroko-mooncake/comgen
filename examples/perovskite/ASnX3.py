@@ -304,6 +304,23 @@ def generate_candidates(
 # Main
 # ---------------------------------------------------------------------------
 
+OUTPUT_DIR = _SCRIPT_DIR.parent / "output"
+OUTPUT_FILE = OUTPUT_DIR / "perovskite_ABX3_candidates.txt"
+
+
+def save_candidates(candidates: List[Candidate], path: Path) -> None:
+    """Write candidates to a text file in the output folder."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"# ABX3 perovskite candidates ({len(candidates)} total)\n")
+        for i, c in enumerate(candidates, start=1):
+            stab = f"  [{c.stability_label}]" if c.stability_label else ""
+            f.write(f"\n#{i}{stab}\n")
+            f.write(f"  composition : {c.elements_frac}\n")
+            f.write(f"  species     : {c.species_counts}\n")
+    log.info("Saved %d candidates to %s", len(candidates), path)
+
+
 if __name__ == "__main__":
     if not MODEL_PATH.exists():
         log.warning(
@@ -325,3 +342,5 @@ if __name__ == "__main__":
         print(f"\n#{i}{stab}")
         print(f"  composition : {c.elements_frac}")
         print(f"  species     : {c.species_counts}")
+
+    save_candidates(cands, OUTPUT_FILE)
