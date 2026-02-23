@@ -8,12 +8,16 @@ Generates potential ABX3 perovskite compounds where:
 Partial substitution is allowed on all crystallographic sites (mixed occupancy).
 Stability is characterised through an ONNX model of formation energy (3-class:
 stable / metastable / unstable) when the model file and onnxruntime are available.
+
+Known reference perovskites and starting materials can be loaded from CSV files
+in the data/ directory to constrain the search to novel, synthesisable compositions.
 """
 
 from __future__ import annotations
 
 import logging
 import sys
+from csv import DictReader
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Union
@@ -49,6 +53,9 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 MODEL_PATH = _SCRIPT_DIR.parent / "low_formation_energy" / "ehull_1040_bn.onnx"
+DATA_DIR = _REPO_ROOT / "data"
+REFERENCE_PEROVSKITES_CSV = DATA_DIR / "reference_perovskites.csv"
+STARTING_MATERIALS_CSV = DATA_DIR / "perovskite_starting_materials.csv"
 
 STABILITY_LABELS = {0: "stable", 1: "metastable", 2: "unstable"}
 
@@ -110,6 +117,47 @@ class Candidate:
     species_counts: Dict[str, int]
     stability_category: Optional[int] = None
     stability_label: Optional[str] = None
+
+# ---------------------------------------------------------------------------
+# CSV loaders
+# ---------------------------------------------------------------------------
+
+def load_reference_perovskites(
+    path: Path = REFERENCE_PEROVSKITES_CSV,
+) -> List[pg.Composition]:
+    """Load known reference perovskite compositions from a CSV file.
+
+    The CSV must have at least a ``composition`` column containing
+    pymatgen-parseable elemental composition strings.
+
+    Returns a list of ``pg.Composition`` objects suitable for ElMD
+    distance constraints.
+    """
+    compositions: List[pg.Composition] = []
+    with open(path, encoding="utf-8") as f:
+        for row in DictReader(f):
+            compositions.append(pg.Composition(row["composition"]))
+    log.info("Loaded %d reference perovskites from %s", len(compositions), path.name)
+    return compositions
+
+
+def load_starting_materials(
+    path: Path = STARTING_MATERIALS_CSV,
+) -> List[pg.Composition]:
+    """Load known starting-material compositions from a CSV file.
+
+    The CSV must have at least a ``composition`` column containing
+    pymatgen-parseable elemental formulas (e.g. ``Pb1I2``, ``C1H6N1I1``).
+
+    Returns a list of ``pg.Composition`` objects suitable for the
+    ``made_from`` synthesis constraint.
+    """
+    ingredients: List[pg.Composition] = []
+    with open(path, encoding="utf-8") as f:
+        for row in DictReader(f):
+            ingredients.append(pg.Composition(row["composition"]))
+    log.info("Loaded %d starting materials from %s", len(ingredients), path.name)
+    return ingredients
 
 # ---------------------------------------------------------------------------
 # Species space
@@ -227,6 +275,19 @@ def add_elmd_constraint(
     else:
         raise ValueError(f"mode must be 'close_to' or 'far_from', got {mode!r}")
 
+
+def add_synthesis_constraint(
+    query: IonicComposition,
+    ingredients: List[pg.Composition],
+) -> None:
+    """Constrain generated compositions to be synthesisable from *ingredients*.
+
+    Uses a mass-balance constraint: the target composition must be expressible
+    as a non-negative linear combination of the provided ingredient
+    compositions (at the elemental level).
+    """
+    query.made_from(ingredients)
+
 # ---------------------------------------------------------------------------
 # ONNX inference (post-processing)
 # ---------------------------------------------------------------------------
@@ -314,6 +375,11 @@ def generate_candidates(
     elmd_mode: str = "close_to",
     n_initial: int = 10,
     reference_compositions: Optional[list] = None,
+    use_known_references: bool = False,
+    min_distance: Optional[float] = None,
+    use_starting_materials: bool = False,
+    starting_materials_path: Optional[Path] = None,
+    references_path: Optional[Path] = None,
 ) -> List[Candidate]:
     """Generate up to *n* ABX3 perovskite candidates.
 
@@ -329,6 +395,17 @@ def generate_candidates(
     If *reference_compositions* is provided explicitly the discovery
     phase is skipped and those compositions are used directly.
 
+    When *use_known_references* is True, known perovskite compounds are
+    loaded from the reference CSV and used as the distance reference set.
+    Combined with *min_distance*, this constrains the solver to produce
+    compositions that are at least *min_distance* (ElMD) away from every
+    known reference — i.e. genuinely novel compositions.
+
+    When *use_starting_materials* is True, the solver is further
+    constrained so that every generated composition can be expressed as a
+    non-negative linear combination of known precursor chemicals (e.g.
+    MAI, PbI2, SnBr2, …).
+
     Parameters
     ----------
     n : int
@@ -341,7 +418,7 @@ def generate_candidates(
         Stability class to target when *use_onnx_constraint* is True
         (0 = stable).
     elmd_distance : float, optional
-        ElMD distance threshold for the constraint.
+        ElMD distance threshold for the generic constraint.
     elmd_mode : str
         ``"close_to"`` (default) or ``"far_from"``.
     n_initial : int
@@ -350,14 +427,48 @@ def generate_candidates(
     reference_compositions : list, optional
         Explicit reference compositions (strings or ``pg.Composition``).
         Skips the discovery phase when provided.
+    use_known_references : bool
+        If True, load known perovskites from ``data/reference_perovskites.csv``
+        and enforce a minimum ElMD distance from all of them.
+    min_distance : float, optional
+        Minimum ElMD distance from every known reference perovskite.
+        Only used when *use_known_references* is True.  Defaults to 3
+        when *use_known_references* is True and *min_distance* is None.
+    use_starting_materials : bool
+        If True, load precursor chemicals from
+        ``data/perovskite_starting_materials.csv`` and add a synthesis
+        (mass-balance) constraint so that only compositions achievable
+        from those ingredients are generated.
+    starting_materials_path : Path, optional
+        Override the default starting-materials CSV path.
+    references_path : Path, optional
+        Override the default reference-perovskites CSV path.
     """
     species = build_species_space()
 
     # ------------------------------------------------------------------
+    # Load external data
+    # ------------------------------------------------------------------
+    known_refs: Optional[List[pg.Composition]] = None
+    if use_known_references:
+        ref_path = references_path or REFERENCE_PEROVSKITES_CSV
+        known_refs = load_reference_perovskites(ref_path)
+        if min_distance is None:
+            min_distance = 3
+            log.info("  min_distance not set; defaulting to %s", min_distance)
+
+    ingredients: Optional[List[pg.Composition]] = None
+    if use_starting_materials:
+        mat_path = starting_materials_path or STARTING_MATERIALS_CSV
+        ingredients = load_starting_materials(mat_path)
+
+    # ------------------------------------------------------------------
     # Phase 1 — discover initial candidates to use as ElMD references
+    #            (only when using the generic elmd_distance without an
+    #             explicit reference set)
     # ------------------------------------------------------------------
     refs = reference_compositions
-    if elmd_distance is not None and refs is None:
+    if elmd_distance is not None and refs is None and not use_known_references:
         log.info("Phase 1: discovering %d initial candidates as ElMD references ...", n_initial)
         q_init = IonicComposition(species)
         add_abx3_constraints(q_init, species)
@@ -366,16 +477,31 @@ def generate_candidates(
         log.info("  Discovered %d reference compounds", len(refs))
 
     # ------------------------------------------------------------------
-    # Phase 2 — generate with all constraints (including ElMD)
+    # Phase 2 — generate with all constraints
     # ------------------------------------------------------------------
     q = IonicComposition(species)
     add_abx3_constraints(q, species)
 
+    if use_known_references and known_refs:
+        log.info(
+            "Adding novelty constraint: ElMD >= %s from %d known reference perovskites",
+            min_distance, len(known_refs),
+        )
+        add_elmd_constraint(q, known_refs, min_distance, mode="far_from")
+
     if elmd_distance is not None and refs:
         op = ">=" if elmd_mode == "far_from" else "<="
-        log.info("Phase 2: ElMD %s constraint (distance %s %s) from %d references",
+        log.info("Adding ElMD %s constraint (distance %s %s) from %d references",
                  elmd_mode, op, elmd_distance, len(refs))
         add_elmd_constraint(q, refs, elmd_distance, mode=elmd_mode)
+
+    if use_starting_materials and ingredients:
+        log.info(
+            "Adding synthesis constraint: composition must be achievable "
+            "from %d known starting materials",
+            len(ingredients),
+        )
+        add_synthesis_constraint(q, ingredients)
 
     if use_onnx_constraint and onnx is not None and MODEL_PATH.exists():
         log.info("Loading ONNX model as Z3 constraint (target category=%d)", target_category)
@@ -425,9 +551,9 @@ if __name__ == "__main__":
 
     cands = generate_candidates(
         n=50,
-        elmd_distance=3,
-        elmd_mode="far_from",
-        n_initial=10,
+        use_known_references=True,
+        min_distance=3,
+        use_starting_materials=True,
     )
 
     print(f"\nGenerated {len(cands)} ABX3 perovskite candidates")
