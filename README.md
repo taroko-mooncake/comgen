@@ -48,12 +48,8 @@ comgen/
 │   ├── garnet/                    # Garnet-like structure generation
 │   ├── perovskite/                # ABX3 perovskite candidate generation
 │   ├── low_formation_energy/      # ONNX-based stability filtering
-│   ├── data/                      # CSV data for Li/Mg examples
+│   ├── data/                      # CSV data for Li/Mg/perovskite examples
 │   └── output/                    # Generated results (one file per script)
-│
-├── data/                          # CSV data for perovskite examples
-│   ├── reference_perovskites.csv
-│   └── perovskite_starting_materials.csv
 │
 ├── tests/                         # Test suite
 │   ├── distance.py                # EMD constraint tests
@@ -164,7 +160,7 @@ python3 examples/run_example.py
 
 ## Examples
 
-All example scripts should be run **from the repository root** so that relative paths to `examples/data/`, `data/`, and `examples/output/` resolve correctly. Each script writes its results to `examples/output/`.
+All example scripts should be run **from the repository root** so that relative paths to `examples/data/` and `examples/output/` resolve correctly. Each script writes its results to `examples/output/`.
 
 ### Li-Ion Conductors
 
@@ -324,7 +320,7 @@ python3 examples/perovskite/ABX3.py
   species     : {'Ni2+': 1, '(C1H6N1)+': 1, 'Cl-': 4, 'Br-': 7, ...}
 ```
 
-> **Note:** The perovskite example requires the CSV files in the `data/` directory at the repository root (not `examples/data/`). These are included in the repository. If the ONNX model file is not present, stability will not be characterised but candidate generation still works.
+> **Note:** The perovskite example requires the CSV files in the `examples/data/` directory. These are included in the repository. If the ONNX model file is not present, stability will not be characterised but candidate generation still works.
 
 ### Low Formation Energy (ONNX)
 
@@ -350,18 +346,13 @@ python3 examples/low_formation_energy/query.py
 
 ## Data Files
 
-### `examples/data/` — Li and Mg conductor data
+### `examples/data/` — Reference and starting-material data
 
 | File | Description | Used by |
 |------|-------------|---------|
 | `LiIon_reps.csv` | Reference Li-ion compositions (column: `composition`). Used so queries can find compositions *far from* these known compounds. | `run_example.py`, `distance_query.py`, `starting_materials_query.py` |
 | `LiIonDatabase.csv` | Li-ion conductor database with columns `composition`, `target` (conductivity), `temperature`. Used to filter for high-performance conductors that serve as templates for Mg analogues. | `Mg_ion_conductors/distance_query.py` |
 | `Li_starting_materials.csv` | Starting materials with `norm_composition` and `starting_material` flag. Used to constrain compositions to be synthesisable from known precursors and to exclude existing compositions. | `starting_materials_query.py` |
-
-### `data/` — Perovskite reference data
-
-| File | Description | Used by |
-|------|-------------|---------|
 | `reference_perovskites.csv` | Known perovskite compositions (column: `composition`). Used as the reference set for ElMD novelty constraints so generated candidates are distinct from known compounds. | `perovskite/ABX3.py` |
 | `perovskite_starting_materials.csv` | Precursor chemicals (column: `composition`, e.g. `Pb1I2`, `C1H6N1I1`). Used for the synthesis mass-balance constraint. | `perovskite/ABX3.py` |
 
@@ -506,4 +497,4 @@ The `tests/test_model.onnx` file is a small ONNX model used by `tests/nn.py` to 
 | Run tests | `python3 -m pytest tests/` |
 | ONNX support | `pip install -e ".[onnx]"` |
 
-All example scripts write results to `examples/output/`. Build an `IonicComposition(species)`, add constraints, then call `get_next(as_frac=True)` in a loop. Use `examples/data/` and `data/` for CSV reference data.
+All example scripts write results to `examples/output/`. Build an `IonicComposition(species)`, add constraints, then call `get_next(as_frac=True)` in a loop. Use `examples/data/` for CSV reference data.
