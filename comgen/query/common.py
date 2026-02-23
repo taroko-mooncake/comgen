@@ -1,3 +1,4 @@
+import warnings
 import pymatgen.core as pg
 
 PETTIFOR_KEYS = tuple(range(0, 103))
@@ -32,7 +33,11 @@ def get_radii(sps, cn=None):
     if cn is not None:
         for sp in sps.ungrouped_view():
             try:
-                radii[str(sp)] = sp.get_shannon_radius(cn=cn, spin='High Spin', radius_type='crystal')
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", UserWarning)
+                    radii[str(sp)] = sp.get_shannon_radius(
+                        cn=cn, spin="High Spin", radius_type="crystal"
+                    )
             except KeyError:
                 pass
     else:

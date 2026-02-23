@@ -1,4 +1,4 @@
-from z3 import sat, Solver, Q
+from z3 import sat, unknown, Solver, Q
 from fractions import Fraction
 from z3.z3 import RatNumRef, BoolRef, IntNumRef
 
@@ -26,11 +26,16 @@ class Query:
             formatted_vars[name] = val
         return formatted_vars
 
-    def get_next(self):
-        s = Solver() 
+    def get_next(self, timeout_ms=None):
+        s = Solver()
+        if timeout_ms is not None:
+            s.set("timeout", timeout_ms)
         for con in self.constraints:
             s.add(con)
-        if s.check() != sat:
+        result = s.check()
+        if result == unknown:
+            return None, None  # timeout or resource limit
+        if result != sat:
             return None, None
         model = s.model()
         self.solutions.append(model)

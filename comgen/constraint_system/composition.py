@@ -1,8 +1,16 @@
-from z3 import And, Or, Not, Sum, Real, Q, Int, Implies
-from comgen import SpeciesCollection, PolyAtomicSpecies
-from comgen.constraint_system.common import zero_weighted_sum, apply_bounds, check_bounds, bound_weighted_average_value_ratio
-import pymatgen.core as pg
+import warnings
 from fractions import Fraction
+
+from z3 import And, Or, Not, Sum, Real, Q, Int, Implies
+import pymatgen.core as pg
+
+from comgen import SpeciesCollection, PolyAtomicSpecies
+from comgen.constraint_system.common import (
+    zero_weighted_sum,
+    apply_bounds,
+    check_bounds,
+    bound_weighted_average_value_ratio,
+)
 
 class TargetComposition:
     def __init__(self, permitted_species, constraint_log, return_vars):
@@ -105,10 +113,12 @@ class TargetComposition:
             pos[str(elt)] = Or([self.species_quantity_vars(str(sp)) > 0 for sp in sps if sp.oxi_state > 0])
             neg[str(elt)] = Or([self.species_quantity_vars(str(sp)) > 0 for sp in sps if sp.oxi_state < 0])
 
-        for el_1 in elt_grouped_sps.keys():
-            for el_2 in elt_grouped_sps.keys():
-                if el_1.X > el_2.X or el_1 == el_2:
-                    eneg_cons.append(Not(And(pos[str(el_1)], neg[str(el_2)])))
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            for el_1 in elt_grouped_sps.keys():
+                for el_2 in elt_grouped_sps.keys():
+                    if el_1.X > el_2.X or el_1 == el_2:
+                        eneg_cons.append(Not(And(pos[str(el_1)], neg[str(el_2)])))
                 
         if return_constraint:
             return And(eneg_cons)

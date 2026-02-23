@@ -107,8 +107,8 @@ class SingleTarget(Query):
         model = ONNX(onnx_model, self.constraints)
         self.new_comp.property_predictor_category(model, category)
 
-    def get_next(self, as_frac=False):
-        model, return_vars = super().get_next()
+    def get_next(self, as_frac=False, timeout_ms=None):
+        model, return_vars = super().get_next(timeout_ms=timeout_ms)
         if model is None:
             return None
         elt_quants = self.new_comp.format_solution(model, as_frac)

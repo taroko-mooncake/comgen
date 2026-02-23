@@ -204,8 +204,8 @@ All example scripts that write results save to **`examples/output/`** (one file 
 | **Mg_ion_conductors/like_ratio_query.py** | Mg-ion compositions with fixed 13-atom stoichiometry and radius-ratio constraints (Mg²⁺ vs cations and anions), inspired by Li₆PS₅Cl. No CSV. | `examples/output/mg_like_ratio.txt` |
 | **Mg_ion_conductors/like_ratio_query_2.py** | Same radius-ratio idea with looser Mg and anion bounds. | `examples/output/mg_like_ratio_2.txt` |
 | **Mg_ion_conductors/like_ratio_query_3.py** | Same radius-ratio idea over formula sizes 10–13 atoms; appends results for each size. | `examples/output/mg_like_ratio_3.txt` |
-| **garnet/query.py** | Garnet-like compositions (+2/+3 cations, SiO₄ anion, radius ratio). Prints one result to stdout. | (stdout only) |
-| **low_formation_energy/query.py** | Compositions classified as a given stability category by an ONNX model. Requires `.[onnx]` and the model file. Prints one result. | (stdout only) |
+| **garnet/query.py** | Garnet-like compositions (+2/+3 cations, SiO₄ anion, radius ratio). Prints one result and writes to output. | `examples/output/garnet_query.txt` |
+| **low_formation_energy/query.py** | Compositions classified as a given stability category by an ONNX model. Requires `.[onnx]` and the model file. | `examples/output/low_formation_energy_query.txt` |
 
 ### Optional: ONNX (low formation energy example)
 

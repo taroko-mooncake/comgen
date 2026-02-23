@@ -39,10 +39,18 @@ class ONNX:
     def _get_node_init_names(self, node):
         return [input_name for input_name in node.input if input_name in self.initNames]
     
+    def _onnx_tensor_dtype_to_np(self, tensor_data_type):
+        """NumPy dtype for an ONNX tensor data type (works across onnx 1.x and 2.x)."""
+        try:
+            return onnx.helper.tensor_dtype_to_np_dtype(tensor_data_type)
+        except AttributeError:
+            return onnx.mapping.TENSOR_TYPE_MAP[tensor_data_type].np_dtype
+
     def _get_init_values(self, node_name):
         for init in self.onnx_model.graph.initializer:
             if init.name == node_name:
-                data = np.frombuffer(init.raw_data, dtype=onnx.mapping.TENSOR_TYPE_MAP[1].np_dtype)
+                dtype = self._onnx_tensor_dtype_to_np(init.data_type)
+                data = np.frombuffer(init.raw_data, dtype=dtype)
                 data = data.reshape(self.shapes[node_name])
                 return data
 
