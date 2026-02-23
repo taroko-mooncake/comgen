@@ -295,8 +295,8 @@ Generates ABX3 organic-inorganic perovskite candidates with partial substitution
 
 The script enforces ABX3 stoichiometry (Sum(A) = k, Sum(B) = k, Sum(X) = 3k for k = 1..4 formula units) with charge balance and supports:
 
-- **Novelty constraint**: ElMD >= 3 from known reference perovskites (`data/reference_perovskites.csv`)
-- **Synthesis constraint**: compositions must be achievable from known starting materials (`data/perovskite_starting_materials.csv`)
+- **Novelty constraint**: ElMD >= 3 from known reference perovskites (`examples/data/reference_perovskites.csv`)
+- **Synthesis constraint**: compositions must be achievable from known starting materials (`examples/data/perovskite_starting_materials.csv`)
 - **ONNX stability filter** (optional): predicted stability category via a formation-energy classifier
 
 ```bash
@@ -305,7 +305,7 @@ python3 examples/perovskite/ABX3.py
 
 | Parameter | Value |
 |-----------|-------|
-| Data files | `data/reference_perovskites.csv`, `data/perovskite_starting_materials.csv` |
+| Data files | `examples/data/reference_perovskites.csv`, `examples/data/perovskite_starting_materials.csv` |
 | Formula units | 1 - 4 |
 | Total atoms | 5 - 80 |
 | Novelty | ElMD >= 3 from all known references |
