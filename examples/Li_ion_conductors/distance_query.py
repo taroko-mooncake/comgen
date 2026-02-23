@@ -4,7 +4,7 @@ import pymatgen.core as pg
 from pathlib import Path
 
 examples_dir = Path(__file__).resolve().parent.parent
-data_dir = examples_dir / "data"
+data_dir = examples_dir / "Li_ion_conductors" / "data"
 output_dir = examples_dir / "output"
 output_file = output_dir / "li_distance_query.txt"
 reps_file = data_dir / "LiIon_reps.csv"
