@@ -1,222 +1,509 @@
 # comgen
 
-**comgen** generates ionic compositions that satisfy user-defined constraints. It uses the Z3 SMT solver to search the composition space and supports charge balance, element/species bounds, radius-ratio rules, distance from known compositions (Earth Mover’s Distance), synthesis-from-ingredients, and optional ONNX-based property filters.
+**comgen** generates ionic compositions that satisfy user-defined constraints. It uses the [Z3 SMT solver](https://github.com/Z3Prover/z3) to search the composition space and supports charge balance, element/species bounds, radius-ratio rules, distance from known compositions (Earth Mover's Distance), synthesis-from-ingredients, and optional ONNX-based property filters.
+
+---
+
+## Table of Contents
+
+- [Project Structure](#project-structure)
+- [Setup](#setup)
+- [Quick Start](#quick-start)
+- [Examples](#examples)
+  - [Li-Ion Conductors](#li-ion-conductors)
+  - [Mg-Ion Conductors](#mg-ion-conductors)
+  - [Garnet-Like Compositions](#garnet-like-compositions)
+  - [ABX3 Perovskites](#abx3-perovskites)
+  - [Low Formation Energy (ONNX)](#low-formation-energy-onnx)
+- [Data Files](#data-files)
+- [API Reference](#api-reference)
+- [Tests](#tests)
+
+---
+
+## Project Structure
+
+```
+comgen/
+├── comgen/                        # Main package
+│   ├── __init__.py                # Exports: IonicComposition, SpeciesCollection, PolyAtomicSpecies
+│   ├── query/                     # High-level query API
+│   │   ├── base.py                # Base Query class (Z3 solver wrapper)
+│   │   ├── ionic.py               # IonicComposition, SingleTarget
+│   │   └── common.py              # Pettifor scale, ionic radii helpers
+│   ├── constraint_system/         # Z3 constraint implementations
+│   │   ├── composition.py         # TargetComposition, UnitCell
+│   │   ├── distance.py            # Earth Mover's Distance (EMD)
+│   │   ├── synthesis.py           # Synthesis-from-ingredients constraints
+│   │   └── nn.py                  # ONNX neural network constraints
+│   └── util/                      # Species definitions and data loading
+│       ├── species.py             # SpeciesCollection, PolyAtomicSpecies
+│       ├── data.py                # Data loading utilities
+│       └── data_files/            # Bundled reference data (periodic table, Pettifor scale, etc.)
+│
+├── examples/                      # Runnable example scripts
+│   ├── run_example.py             # Quick-start example
+│   ├── Li_ion_conductors/         # Li-ion conductor discovery
+│   ├── Mg_ion_conductors/         # Mg-ion conductor discovery
+│   ├── garnet/                    # Garnet-like structure generation
+│   ├── perovskite/                # ABX3 perovskite candidate generation
+│   ├── low_formation_energy/      # ONNX-based stability filtering
+│   ├── data/                      # CSV data for Li/Mg examples
+│   └── output/                    # Generated results (one file per script)
+│
+├── data/                          # CSV data for perovskite examples
+│   ├── reference_perovskites.csv
+│   └── perovskite_starting_materials.csv
+│
+├── tests/                         # Test suite
+│   ├── distance.py                # EMD constraint tests
+│   ├── nn.py                      # ONNX constraint tests
+│   └── test_model.onnx            # Small ONNX model for testing
+│
+├── pyproject.toml                 # Package metadata and dependencies
+├── requirements.txt               # Dependency list
+└── main.py                        # Minimal entry point
+```
 
 ---
 
 ## Setup
 
-### Requirements
+### Prerequisites
 
-- Python 3.8+
-- See `requirements.txt` and `pyproject.toml` for dependency versions.
+- **Python 3.8** or newer
+- **pip** (or [uv](https://docs.astral.sh/uv/) as an alternative)
 
-### Install
+### 1. Clone the repository
 
-From the repository root:
+```bash
+git clone <repo-url>
+cd comgen
+```
+
+### 2. Create a virtual environment (recommended)
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate        # Linux / macOS
+# .venv\Scripts\activate         # Windows
+```
+
+### 3. Install the package
+
+Install in editable mode so that `import comgen` works from anywhere:
 
 ```bash
 pip install -e .
 ```
 
-With [uv](https://docs.astral.sh/uv/):
+Or with [uv](https://docs.astral.sh/uv/):
 
 ```bash
 uv pip install -e .
 ```
 
-For the ONNX-based example (`examples/low_formation_energy/query.py`), install the optional extra (avoids C++ build issues on some systems if you skip it):
+This installs the core dependencies:
+
+| Package | Purpose |
+|---------|---------|
+| **pymatgen** >= 2022.5.26 | Species, compositions, ionic radii |
+| **z3-solver** >= 4.8.17.0 | Constraint solving (SMT) |
+| **numpy** >= 1.21 | Numerical operations |
+
+### 4. (Optional) Install ONNX support
+
+The `low_formation_energy` and `perovskite` examples can use an ONNX model for stability prediction. Install the optional extra:
 
 ```bash
 pip install -e ".[onnx]"
-# or
-uv pip install -e ".[onnx]"
 ```
 
-Or install dependencies only (if you run scripts with `python -m` from the project root):
+This adds **onnx** >= 1.15.0. For runtime inference in the perovskite example, also install:
+
+```bash
+pip install onnxruntime
+```
+
+### Alternative: install dependencies only
+
+If you prefer not to install the package and instead run scripts from the repository root:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Core dependencies:
-
-- **pymatgen** – species, compositions, radii
-- **z3-solver** – constraint solving
-- **onnx** – optional, for ONNX-based category prediction in some examples
-- **numpy** – used by the package
-
 ---
 
-## Running programs
+## Quick Start
 
-### Quick start
-
-From the repository root, run the main example (generates Li-ion compositions and writes to `examples/output/example_compositions.txt`):
+From the repository root, run the main example. It generates Li-ion compositions that are far from known references (using Earth Mover's Distance) and writes results to `examples/output/example_compositions.txt`:
 
 ```bash
 cd /path/to/comgen
 pip install -e .
-python examples/run_example.py
+python3 examples/run_example.py
 ```
 
-### Run from project root
+**What it does:**
 
-Examples and tests assume the **comgen** package is on `PYTHONPATH`. Run from the repo root so that `import comgen` resolves:
+1. Loads reference compositions from `examples/data/LiIon_reps.csv`
+2. Builds a species collection for Li + p-block + post-transition + alkaline/rare-earth + anion elements
+3. Adds constraints: Li fraction >= 20%, each group >= 5%, at most 6 distinct elements, 10-15 total atoms, EMD >= 5 from all references
+4. Solves for 10 compositions and writes them to the output file
 
-```bash
-cd /path/to/comgen
-python examples/run_example.py   # recommended first run
-python examples/garnet/query.py
-python examples/perovskite/ABX3.py
-python examples/Li_ion_conductors/distance_query.py
-# etc.
+**Expected output** (fractional compositions):
+
 ```
-
-### Run an example that needs data
-
-Some examples read CSV files from `examples/data/`. Run them from the repo root so relative paths work:
-
-```bash
-python examples/Li_ion_conductors/distance_query.py
-python examples/Li_ion_conductors/starting_materials_query.py
-python examples/Mg_ion_conductors/distance_query.py
-```
-
-### Run tests
-
-```bash
-python -m pytest tests/
-# or
-python tests/distance.py
+{'Ca': '1/15', 'Al': '1/15', 'N': '4/15', 'Mg': '1/15', 'S': '1/15', 'Li': '7/15'}
+{'Sr': '1/15', 'N': '2/5', 'Ga': '1/5', 'P': '1/15', 'Li': '1/5', 'Br': '1/15'}
+...
 ```
 
 ---
 
-## Generating outputs
+## Examples
 
-### Basic usage
+All example scripts should be run **from the repository root** so that relative paths to `examples/data/`, `data/`, and `examples/output/` resolve correctly. Each script writes its results to `examples/output/`.
 
-1. Define a **species collection** (allowed ions).
-2. Build an **`IonicComposition`** query and add constraints.
-3. Call **`get_next()`** repeatedly to get solutions (each new solution is excluded from the next call).
+### Li-Ion Conductors
 
-Example (garnet-like compositions: charge +2/+3 cations, SiO₄ anion, radius ratio and O fraction fixed):
+#### Distance query
+
+Generates Li-ion compositions that are far from all known representatives in `LiIon_reps.csv`. Uses the full element set with explicit fraction bounds per group.
+
+```bash
+python3 examples/Li_ion_conductors/distance_query.py
+```
+
+| Parameter | Value |
+|-----------|-------|
+| Data file | `examples/data/LiIon_reps.csv` |
+| EMD distance | >= 5 from every reference |
+| Total atoms | 10 - 15 |
+| Distinct elements | <= 6 |
+| Results | 20 compositions |
+| Output | `examples/output/li_distance_query.txt` |
+
+#### Starting materials query
+
+Generates Li-ion compositions that are synthesisable from known precursors, excludes already-known compositions, and requires novelty (EMD >= 5 from references). Combines synthesis, exclusion, and distance constraints.
+
+```bash
+python3 examples/Li_ion_conductors/starting_materials_query.py
+```
+
+| Parameter | Value |
+|-----------|-------|
+| Data files | `examples/data/LiIon_reps.csv`, `examples/data/Li_starting_materials.csv` |
+| Constraints | EMD >= 5, synthesisable from ingredients, known compositions excluded |
+| Solver timeout | 60 s per solution |
+| Reference sub-sampling | 10 references (random seed 42) to reduce solver load |
+| Output | `examples/output/li_starting_materials.txt` |
+
+### Mg-Ion Conductors
+
+#### Distance query
+
+Finds Mg-ion compositions that are close to at least one high-performance Li-ion conductor from `LiIonDatabase.csv` (filtered by conductivity >= 1e-3 S/cm at 15-35 C). Explores Mg analogues of good Li conductors.
+
+```bash
+python3 examples/Mg_ion_conductors/distance_query.py
+```
+
+| Parameter | Value |
+|-----------|-------|
+| Data file | `examples/data/LiIonDatabase.csv` |
+| EMD distance | <= 3 from at least one filtered Li conductor |
+| Total atoms | 10 - 20 |
+| Mg fraction | >= 10% |
+| Output | `examples/output/mg_distance_query.txt` |
+
+#### Radius-ratio query (fixed stoichiometry)
+
+Generates Mg-ion compositions with ion-pair radius ratios typical of Li6PS5Cl-like structures: Mg-cation ratio 1.55-1.85, Mg-anion ratio 0.45-0.55. Uses fixed 13-atom stoichiometry.
+
+```bash
+python3 examples/Mg_ion_conductors/like_ratio_query.py
+```
+
+| Parameter | Value |
+|-----------|-------|
+| Total atoms | 13 (fixed) |
+| Mg fraction | 6/13 |
+| Cation fraction | 1/13 |
+| Anion fraction | 6/13 |
+| Output | `examples/output/mg_like_ratio.txt` |
+
+#### Radius-ratio query (relaxed bounds)
+
+Same radius-ratio constraints as above but with relaxed composition bounds: Mg between 3/13 and 6/13, cations >= 1/13, anion fraction unconstrained.
+
+```bash
+python3 examples/Mg_ion_conductors/like_ratio_query_2.py
+```
+
+| Parameter | Value |
+|-----------|-------|
+| Mg fraction | 3/13 - 6/13 |
+| Output | `examples/output/mg_like_ratio_2.txt` |
+
+#### Radius-ratio query (multiple formula sizes)
+
+Loops over total atom counts 10-13 and generates compositions for each size with Li6PS5Cl-like stoichiometry. Appends all results to a single file.
+
+```bash
+python3 examples/Mg_ion_conductors/like_ratio_query_3.py
+```
+
+| Parameter | Value |
+|-----------|-------|
+| Atom counts | 10, 11, 12, 13 |
+| Results per size | 3 |
+| Output | `examples/output/mg_like_ratio_3.txt` |
+
+### Garnet-Like Compositions
+
+Generates compositions that may have garnet-like structure: +2/+3 cations with SiO4 anion, constrained by radius ratio and fixed oxygen fraction.
+
+```bash
+python3 examples/garnet/query.py
+```
+
+| Parameter | Value |
+|-----------|-------|
+| Cation charges | +2 and +3 |
+| Anion | SiO4^4- (polyatomic) |
+| Distinct elements | 4 |
+| O fraction | 12/20 = 60% |
+| Radius ratio (VIII/VI) | 1.5 - 1.9 |
+| Output | `examples/output/garnet_query.txt` |
+
+**Expected output:**
+
+```
+{'Si': '3/20', 'O': '3/5', 'Mn': '3/20', 'As': '1/10'}
+```
+
+### ABX3 Perovskites
+
+Generates ABX3 organic-inorganic perovskite candidates with partial substitution on all crystallographic sites:
+
+- **A-site**: MA+ (methylammonium), FA+ (formamidinium), GA+ (guanidinium), Cs+
+- **B-site**: Pb2+, Sn2+, Hg2+, Cd2+, Zn2+, Fe2+, Ni2+, Co2+, In3+, Bi3+, Ti4+
+- **X-site**: Cl-, Br-, I-
+
+The script enforces ABX3 stoichiometry (Sum(A) = k, Sum(B) = k, Sum(X) = 3k for k = 1..4 formula units) with charge balance and supports:
+
+- **Novelty constraint**: ElMD >= 3 from known reference perovskites (`data/reference_perovskites.csv`)
+- **Synthesis constraint**: compositions must be achievable from known starting materials (`data/perovskite_starting_materials.csv`)
+- **ONNX stability filter** (optional): predicted stability category via a formation-energy classifier
+
+```bash
+python3 examples/perovskite/ABX3.py
+```
+
+| Parameter | Value |
+|-----------|-------|
+| Data files | `data/reference_perovskites.csv`, `data/perovskite_starting_materials.csv` |
+| Formula units | 1 - 4 |
+| Total atoms | 5 - 80 |
+| Novelty | ElMD >= 3 from all known references |
+| Synthesis | constrained to known starting materials |
+| Max candidates | 50 |
+| ONNX model (optional) | `examples/low_formation_energy/ehull_1040_bn.onnx` |
+| Output | `examples/output/perovskite_ABX3_candidates.txt` |
+
+**Expected output format:**
+
+```
+# ABX3 perovskite candidates (17 total)
+
+#1
+  composition : {'Ni': 0.019, 'C': 0.074, 'N': 0.185, ...}
+  species     : {'Ni2+': 1, '(C1H6N1)+': 1, 'Cl-': 4, 'Br-': 7, ...}
+```
+
+> **Note:** The perovskite example requires the CSV files in the `data/` directory at the repository root (not `examples/data/`). These are included in the repository. If the ONNX model file is not present, stability will not be characterised but candidate generation still works.
+
+### Low Formation Energy (ONNX)
+
+Uses an ONNX neural network model (`ehull_1040_bn.onnx`) to restrict compositions to a given stability category. Runs in two phases: first without the ONNX constraint (fast sanity check), then with the ONNX constraint in a subprocess with a wall-clock timeout.
+
+```bash
+pip install -e ".[onnx]"
+python3 examples/low_formation_energy/query.py
+```
+
+| Parameter | Value |
+|-----------|-------|
+| ONNX model | `examples/low_formation_energy/ehull_1040_bn.onnx` (not included; provide your own) |
+| Total atoms | 5 - 10 |
+| Distinct elements | <= 4 |
+| Target category | 0 (stable) |
+| Solver timeout | 600 s |
+| Output | `examples/output/low_formation_energy_query.txt` |
+
+> **Note:** You need the `ehull_1040_bn.onnx` model file in `examples/low_formation_energy/` to run this example. The ONNX constraint embeds the neural network directly into the Z3 solver, which can be slow for large models.
+
+---
+
+## Data Files
+
+### `examples/data/` — Li and Mg conductor data
+
+| File | Description | Used by |
+|------|-------------|---------|
+| `LiIon_reps.csv` | Reference Li-ion compositions (column: `composition`). Used so queries can find compositions *far from* these known compounds. | `run_example.py`, `distance_query.py`, `starting_materials_query.py` |
+| `LiIonDatabase.csv` | Li-ion conductor database with columns `composition`, `target` (conductivity), `temperature`. Used to filter for high-performance conductors that serve as templates for Mg analogues. | `Mg_ion_conductors/distance_query.py` |
+| `Li_starting_materials.csv` | Starting materials with `norm_composition` and `starting_material` flag. Used to constrain compositions to be synthesisable from known precursors and to exclude existing compositions. | `starting_materials_query.py` |
+
+### `data/` — Perovskite reference data
+
+| File | Description | Used by |
+|------|-------------|---------|
+| `reference_perovskites.csv` | Known perovskite compositions (column: `composition`). Used as the reference set for ElMD novelty constraints so generated candidates are distinct from known compounds. | `perovskite/ABX3.py` |
+| `perovskite_starting_materials.csv` | Precursor chemicals (column: `composition`, e.g. `Pb1I2`, `C1H6N1I1`). Used for the synthesis mass-balance constraint. | `perovskite/ABX3.py` |
+
+---
+
+## API Reference
+
+### Core classes
+
+```python
+from comgen import IonicComposition, SpeciesCollection, PolyAtomicSpecies
+```
+
+#### `SpeciesCollection`
+
+Manages the set of allowed ionic species for a query.
+
+| Method | Description |
+|--------|-------------|
+| `SpeciesCollection.for_elements(elements=None)` | Build a collection for given elements (or all elements if `None`). Uses pymatgen `Species` with known oxidation states. |
+| `.having_charge(charges)` | Filter to species with the given charge(s), e.g. `[2, 3]` or `{-1, -2}`. |
+| `.difference(species_set)` | Remove specific species from the collection. |
+| `.update(species)` | Add species (e.g. a `PolyAtomicSpecies`) to the collection. |
+
+#### `PolyAtomicSpecies`
+
+Represents polyatomic ions. Combine with `SpeciesCollection.update()`:
+
+```python
+sps.update(PolyAtomicSpecies("SiO4", -4))
+```
+
+#### `IonicComposition`
+
+The main query class. Extends `SingleTarget` with automatic charge balance and electronegativity ordering.
+
+```python
+query = IonicComposition(species, precision=0.1)
+```
+
+### Constraint methods
+
+| Method | Purpose |
+|--------|---------|
+| `include_elements_quantity(elements, exact=None, *, lb=None, ub=None)` | Bound the total normalised fraction of a set of elements. |
+| `include_elements(elements, exact=None, *, lb=None, ub=None)` | Bound the count of elements from a set that appear in the composition. |
+| `include_elements_count(elements, exact=None, *, lb=None, ub=None)` | Bound the absolute integer atom count for elements (requires unit cell). |
+| `include_species_quantity(species, exact=None, *, lb=None, ub=None)` | Bound the total normalised fraction of a set of species (element + oxidation state). |
+| `distinct_elements(exact=None, *, lb=None, ub=None)` | Limit the number of distinct elements. |
+| `total_atoms(exact=None, *, lb=None, ub=None)` | Bound total atom count per unit cell. Creates a `UnitCell` internally. |
+| `ion_pair_radius_ratio(sps1, sps2, cn1=None, cn2=None, *, lb=None, ub=None)` | Require at least one ion pair whose Shannon radius ratio is in `[lb, ub]`. Coordination numbers (e.g. `"VIII"`, `"VI"`) are optional. |
+| `ion_pair_radius_difference(sps1, sps2=None, *, lb=None, ub=None)` | Exclude ion pairs whose absolute radius difference is outside `[lb, ub]`. |
+| `elmd_far_from_all(compositions, distance)` | Earth Mover's Distance from every reference >= `distance`. |
+| `elmd_close_to_one(compositions, bounds)` | EMD to at least one reference <= `bounds`. |
+| `made_from(ingredients)` | Composition must be a non-negative linear combination of ingredient compositions. |
+| `exclude(compositions)` | Exclude specific compositions from the search. |
+| `category_prediction(onnx_model, category)` | Require the ONNX classifier to predict the given category. |
+
+### Getting results
+
+```python
+result = query.get_next(as_frac=True, timeout_ms=60000)
+if result is None:
+    print("No more solutions")
+else:
+    composition, monitored_vars = result
+    print(composition)
+    # e.g. {'Li': '1/5', 'La': '1/10', 'Zr': '1/10', 'O': '3/5'}
+```
+
+- `as_frac=True` returns quantities as fraction strings (e.g. `'1/5'`); `False` returns rounded floats.
+- `timeout_ms` sets a per-call solver timeout in milliseconds.
+- Each call automatically excludes previous solutions (within `precision`) so repeated calls yield distinct compositions.
+
+### Typical workflow
 
 ```python
 from comgen import IonicComposition, SpeciesCollection, PolyAtomicSpecies
 
-def get_permitted_ions():
-    sps = SpeciesCollection.for_elements()
-    sps = sps.having_charge([2, 3])
-    sps.update(PolyAtomicSpecies("SiO4", -4))
-    return sps
+# 1. Define allowed species
+sps = SpeciesCollection.for_elements({"Li", "La", "Zr", "O", "F"})
 
-sps = get_permitted_ions()
+# 2. Build query (charge balance is automatic)
 query = IonicComposition(sps)
 
-query.distinct_elements(4)
-query.include_elements_quantity({'O'}, 12/20)
-query.ion_pair_radius_ratio(
-    sps.having_charge(2), sps.having_charge(3),
-    cn1='VIII', cn2='VI', lb=1.5, ub=1.9
-)
-print(query.get_next())
+# 3. Add constraints
+query.distinct_elements(lb=3, ub=5)
+query.include_elements_quantity({"Li"}, lb=0.1)
+query.total_atoms(lb=8, ub=15)
+
+# 4. Solve iteratively
+for _ in range(10):
+    out = query.get_next(as_frac=True)
+    if out is None:
+        break
+    comp, _ = out
+    print(comp)
 ```
 
-### Species collections
-
-- **`SpeciesCollection.for_elements(elements=None)`**  
-  Builds a collection of allowed species for the given set of elements (or all elements if `elements` is `None`). Uses pymatgen `Species` (e.g. oxidation states).
-- **`sps.having_charge(charges)`**  
-  Filter by charge(s), e.g. `[2, 3]`.
-- **`sps.difference(...)`**  
-  Remove specific species (e.g. certain oxidation states).
-- **`PolyAtomicSpecies("SiO4", -4)`**  
-  Add polyatomic ions; can be combined with `sps.update(...)`.
-
-### Common constraints (query methods)
-
-| Method | Purpose |
-|--------|--------|
-| `include_elements_quantity(elements, exact=None, lb=..., ub=...)` | Bound fractional quantity of given elements. |
-| `include_elements(elements, exact=..., lb=..., ub=...)` | Bound count of elements (with unit cell). |
-| `distinct_elements(exact=..., lb=..., ub=...)` | Limit number of distinct elements. |
-| `total_atoms(lb=..., ub=...)` | Bound total atom count per formula/unit cell. |
-| `ion_pair_radius_ratio(sps1, sps2, cn1=..., cn2=..., lb=..., ub=...)` | Require at least one ion pair with radius ratio in range (coordination numbers optional). |
-| `ion_pair_radius_difference(sps1, sps2=..., lb=..., ub=...)` | Constrain absolute radius difference for selected pairs. |
-| `elmd_far_from_all(compositions, distance)` | Earth Mover’s distance from each reference composition ≥ `distance`. |
-| `elmd_close_to_one(compositions, bounds)` | Be close to at least one reference (EMD within bounds). |
-| `made_from(ingredients)` | Composition must be synthesizable from given ingredient compositions. |
-| `exclude(compositions)` | Exclude specific compositions. |
-| `category_prediction(onnx_model, category)` | Apply an ONNX classifier; require given category. |
-
-### Getting results
-
-- **`get_next(as_frac=False)`**  
-  Returns the next solution or `None` if no more. With `as_frac=True`, composition is returned as fractional amounts (e.g. for writing to a file). Typical use:
-
-  ```python
-  res, model = query.get_next(as_frac=True)
-  if res is None:
-      break
-  # use res (dict of element/species -> quantity string)
-  ```
-
-- Repeated calls yield new compositions; previously returned ones are excluded automatically (within the chosen precision).
-
-### Example: writing results to a file
+### Writing results to a file
 
 ```python
 from pathlib import Path
-output_dir = Path(__file__).resolve().parent / "output"
+
+output_dir = Path("examples/output")
 output_dir.mkdir(parents=True, exist_ok=True)
-output_file = output_dir / "results.txt"
-num_results = 20
-with open(output_file, "w", encoding="utf-8") as f_out:
-    for _ in range(num_results):
+with open(output_dir / "results.txt", "w", encoding="utf-8") as f:
+    for _ in range(20):
         out = query.get_next(as_frac=True)
         if out is None:
             break
-        res, _ = out
-        f_out.write(str(res) + "\n")
+        comp, _ = out
+        f.write(str(comp) + "\n")
 ```
 
-### Example data and queries
+---
 
-All example scripts that write results save to **`examples/output/`** (one file per script). Run examples from the repository root so paths to `examples/data/` and `examples/output/` resolve.
+## Tests
 
-#### Data files (`examples/data/`)
+The test suite covers EMD distance calculations and ONNX neural network constraint embedding.
 
-| File | Description |
-|------|--------------|
-| **LiIon_reps.csv** | Reference Li-ion compositions (column `composition`). Used as a list of “known” compositions so queries can ask for new compositions *far from* (or similar to) these. |
-| **LiIonDatabase.csv** | Li-ion conductor database with columns such as `composition`, `target`, `temperature`. Used to filter compositions by property (e.g. conductivity, temperature) and then constrain new compositions to be *close to* one of them (e.g. for Mg-ion analogues). |
-| **Li_starting_materials.csv** | Starting materials and their `norm_composition`; a column indicates whether each row is a starting material. Used to constrain compositions to be *synthesizable from* a given set of precursors and to *exclude* existing compositions. |
+```bash
+# Run all tests
+python3 -m pytest tests/
 
-#### Example queries
+# Run individual test scripts
+python3 tests/distance.py
+python3 tests/nn.py
+```
 
-| Script | What it does | Output file |
-|--------|----------------|-------------|
-| **run_example.py** | Li-ion compositions *far from* all references in `LiIon_reps.csv` (EMD). Simplified element set and bounds for a fast first run. | `examples/output/example_compositions.txt` |
-| **Li_ion_conductors/distance_query.py** | Li-ion compositions *far from* all references in `LiIon_reps.csv`. Full element set and explicit fraction bounds per group. | `examples/output/li_distance_query.txt` |
-| **Li_ion_conductors/starting_materials_query.py** | Li-ion compositions *far from* `LiIon_reps.csv` and *synthesizable from* ingredients in `Li_starting_materials.csv`; also *excludes* all compositions in that file. | `examples/output/li_starting_materials.txt` |
-| **Mg_ion_conductors/distance_query.py** | Mg-ion compositions *close to* at least one filtered Li-ion composition from `LiIonDatabase.csv` (target and temperature filters). Explores Mg analogues of good Li conductors. | `examples/output/mg_distance_query.txt` |
-| **Mg_ion_conductors/like_ratio_query.py** | Mg-ion compositions with fixed 13-atom stoichiometry and radius-ratio constraints (Mg²⁺ vs cations and anions), inspired by Li₆PS₅Cl. No CSV. | `examples/output/mg_like_ratio.txt` |
-| **Mg_ion_conductors/like_ratio_query_2.py** | Same radius-ratio idea with looser Mg and anion bounds. | `examples/output/mg_like_ratio_2.txt` |
-| **Mg_ion_conductors/like_ratio_query_3.py** | Same radius-ratio idea over formula sizes 10–13 atoms; appends results for each size. | `examples/output/mg_like_ratio_3.txt` |
-| **garnet/query.py** | Garnet-like compositions (+2/+3 cations, SiO₄ anion, radius ratio). Prints one result and writes to output. | `examples/output/garnet_query.txt` |
-| **perovskite/ABX3.py** | ABX₃ organic–inorganic perovskite candidates (A = MA/Cs/FA/GA, B = Pb/Sn/…, X = Cl/Br/I). Optional ONNX stability filter. | `examples/output/perovskite_ABX3_candidates.txt` |
-| **low_formation_energy/query.py** | Compositions classified as a given stability category by an ONNX model. Requires `.[onnx]` and the model file. | `examples/output/low_formation_energy_query.txt` |
-
-### Optional: ONNX (low formation energy example)
-
-`examples/low_formation_energy/query.py` uses an ONNX model (`ehull_1040_bn.onnx`) to restrict to a given stability category. Install the optional dependency: `pip install -e ".[onnx]"` (or `uv pip install -e ".[onnx]"`). You also need the model file in the same directory as the script.
+The `tests/test_model.onnx` file is a small ONNX model used by `tests/nn.py` to verify forward pass, class selection, and output bounding constraints.
 
 ---
 
 ## Summary
 
-- **Setup:** `pip install -e .` (or `pip install -r requirements.txt`) in the repo root.
-- **Run:** From repo root: `python examples/<example_folder>/<script>.py` or `python -m pytest tests/`.
-- **Outputs:** Example queries write to `examples/output/` (see table above). Build an `IonicComposition(species)`, add constraints, then call `get_next(as_frac=True)` in a loop; use `examples/data/` when the script expects CSV data.
+| Step | Command |
+|------|---------|
+| Install | `pip install -e .` (or `pip install -r requirements.txt`) |
+| Quick start | `python3 examples/run_example.py` |
+| Run any example | `python3 examples/<folder>/<script>.py` (from repo root) |
+| Run tests | `python3 -m pytest tests/` |
+| ONNX support | `pip install -e ".[onnx]"` |
+
+All example scripts write results to `examples/output/`. Build an `IonicComposition(species)`, add constraints, then call `get_next(as_frac=True)` in a loop. Use `examples/data/` and `data/` for CSV reference data.
