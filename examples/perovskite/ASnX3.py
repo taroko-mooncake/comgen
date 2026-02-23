@@ -198,28 +198,34 @@ def add_onnx_stability_constraint(
 # ElMD distance constraint
 # ---------------------------------------------------------------------------
 
-REFERENCE_PEROVSKITES = [
-    "CsPbBr3",
-    "CsPbCl3",
-    "CsPbI3",
-    "CsSnBr3",
-    "CsSnCl3",
-    "CsSnI3",
-]
-
-
 def add_elmd_constraint(
     query: IonicComposition,
-    reference_compositions: List[str],
-    max_distance: Union[float, int],
+    reference_compositions: list,
+    distance: Union[float, int],
+    *,
+    mode: str = "close_to",
 ) -> None:
-    """Require candidates to be within *max_distance* (ElMD) of at least one
-    reference composition.
+    """Add an ElMD (Earth Mover's Distance on the Pettifor scale) constraint.
 
-    A smaller *max_distance* produces candidates that are compositionally
-    closer to known perovskites; a larger value allows more novelty.
+    Parameters
+    ----------
+    reference_compositions : list
+        Composition strings (e.g. ``"CsPbBr3"``) or pymatgen
+        ``Composition`` objects to measure distance against.
+    distance : float
+        Distance threshold.
+    mode : str
+        ``"close_to"`` — candidate must be within *distance* of **at least
+        one** reference  (ElMD <= *distance*).
+        ``"far_from"`` — candidate must be at least *distance* away from
+        **every** reference  (ElMD >= *distance*).
     """
-    query.elmd_close_to_one(reference_compositions, max_distance)
+    if mode == "close_to":
+        query.elmd_close_to_one(reference_compositions, distance)
+    elif mode == "far_from":
+        query.elmd_far_from_all(reference_compositions, distance)
+    else:
+        raise ValueError(f"mode must be 'close_to' or 'far_from', got {mode!r}")
 
 # ---------------------------------------------------------------------------
 # ONNX inference (post-processing)
@@ -261,54 +267,15 @@ def predict_stability(elements_frac: Dict[str, float]) -> Optional[int]:
 # Candidate generation
 # ---------------------------------------------------------------------------
 
-def generate_candidates(
-    n: int = 100,
-    use_onnx_constraint: bool = False,
-    target_category: int = 0,
-    elmd_distance: Optional[float] = None,
-    reference_compositions: Optional[List[str]] = None,
+def _solve_batch(
+    query: IonicComposition,
+    n: int,
+    timeout_ms: int = 60_000,
 ) -> List[Candidate]:
-    """Generate up to *n* ABX3 perovskite candidates.
-
-    Parameters
-    ----------
-    n : int
-        Maximum number of candidates to generate.
-    use_onnx_constraint : bool
-        If True **and** the ONNX model is available, add it as a Z3 hard
-        constraint so only compositions predicted as *target_category* are
-        emitted.  This is powerful but can be slow for deep networks.
-    target_category : int
-        Stability class to target when *use_onnx_constraint* is True
-        (0 = stable).
-    elmd_distance : float, optional
-        When set, candidates must be within this Earth Mover's Distance
-        (ElMD, on the Pettifor scale) of at least one reference composition.
-        Smaller values keep candidates close to known perovskites; larger
-        values allow more novelty.
-    reference_compositions : list of str, optional
-        Reference compositions for the ElMD constraint.  Defaults to
-        ``REFERENCE_PEROVSKITES`` when *elmd_distance* is given.
-    """
-    species = build_species_space()
-    q = IonicComposition(species)
-    add_abx3_constraints(q, species)
-
-    if elmd_distance is not None:
-        refs = reference_compositions or REFERENCE_PEROVSKITES
-        log.info("ElMD constraint: distance <= %s from %d references", elmd_distance, len(refs))
-        add_elmd_constraint(q, refs, elmd_distance)
-
-    if use_onnx_constraint and onnx is not None and MODEL_PATH.exists():
-        log.info("Loading ONNX model as Z3 constraint (target category=%d)", target_category)
-        onnx_model = onnx.load(str(MODEL_PATH))
-        add_onnx_stability_constraint(q, onnx_model, target_category)
-
-    log.info("Generating up to %d ABX3 perovskite candidates ...", n)
+    """Run the solver up to *n* times, collecting candidates."""
     out: List[Candidate] = []
-
     for i in range(n):
-        result = q.get_next(timeout_ms=60000)
+        result = query.get_next(timeout_ms=timeout_ms)
         if result is None:
             log.info("Solver exhausted after %d candidates", i)
             break
@@ -336,6 +303,87 @@ def generate_candidates(
             stability_category=stab_cat,
             stability_label=stab_label,
         ))
+    return out
+
+
+def generate_candidates(
+    n: int = 100,
+    use_onnx_constraint: bool = False,
+    target_category: int = 0,
+    elmd_distance: Optional[float] = None,
+    elmd_mode: str = "close_to",
+    n_initial: int = 10,
+    reference_compositions: Optional[list] = None,
+) -> List[Candidate]:
+    """Generate up to *n* ABX3 perovskite candidates.
+
+    When *elmd_distance* is set the generation runs in two phases:
+
+    1. **Discovery** — generate *n_initial* candidates without an ElMD
+       constraint.  These become the reference set.
+    2. **Filtered generation** — build a fresh query with an ElMD
+       constraint (``mode="close_to"`` for ElMD <= *distance*, or
+       ``mode="far_from"`` for ElMD >= *distance*) relative to the
+       discovered references, then generate up to *n* candidates.
+
+    If *reference_compositions* is provided explicitly the discovery
+    phase is skipped and those compositions are used directly.
+
+    Parameters
+    ----------
+    n : int
+        Maximum number of candidates to generate.
+    use_onnx_constraint : bool
+        If True **and** the ONNX model is available, add it as a Z3 hard
+        constraint so only compositions predicted as *target_category* are
+        emitted.  This is powerful but can be slow for deep networks.
+    target_category : int
+        Stability class to target when *use_onnx_constraint* is True
+        (0 = stable).
+    elmd_distance : float, optional
+        ElMD distance threshold for the constraint.
+    elmd_mode : str
+        ``"close_to"`` (default) or ``"far_from"``.
+    n_initial : int
+        How many candidates to discover in the first phase (ignored when
+        *reference_compositions* is supplied or *elmd_distance* is None).
+    reference_compositions : list, optional
+        Explicit reference compositions (strings or ``pg.Composition``).
+        Skips the discovery phase when provided.
+    """
+    species = build_species_space()
+
+    # ------------------------------------------------------------------
+    # Phase 1 — discover initial candidates to use as ElMD references
+    # ------------------------------------------------------------------
+    refs = reference_compositions
+    if elmd_distance is not None and refs is None:
+        log.info("Phase 1: discovering %d initial candidates as ElMD references ...", n_initial)
+        q_init = IonicComposition(species)
+        add_abx3_constraints(q_init, species)
+        initial = _solve_batch(q_init, n_initial)
+        refs = [pg.Composition(c.elements_frac) for c in initial]
+        log.info("  Discovered %d reference compounds", len(refs))
+
+    # ------------------------------------------------------------------
+    # Phase 2 — generate with all constraints (including ElMD)
+    # ------------------------------------------------------------------
+    q = IonicComposition(species)
+    add_abx3_constraints(q, species)
+
+    if elmd_distance is not None and refs:
+        op = ">=" if elmd_mode == "far_from" else "<="
+        log.info("Phase 2: ElMD %s constraint (distance %s %s) from %d references",
+                 elmd_mode, op, elmd_distance, len(refs))
+        add_elmd_constraint(q, refs, elmd_distance, mode=elmd_mode)
+
+    if use_onnx_constraint and onnx is not None and MODEL_PATH.exists():
+        log.info("Loading ONNX model as Z3 constraint (target category=%d)", target_category)
+        onnx_model = onnx.load(str(MODEL_PATH))
+        add_onnx_stability_constraint(q, onnx_model, target_category)
+
+    log.info("Generating up to %d ABX3 perovskite candidates ...", n)
+    out = _solve_batch(q, n)
 
     out.sort(key=lambda c: (
         c.stability_category if c.stability_category is not None else 999,
@@ -375,7 +423,12 @@ if __name__ == "__main__":
             "(pip install onnxruntime)",
         )
 
-    cands = generate_candidates(n=50, elmd_distance=3)
+    cands = generate_candidates(
+        n=50,
+        elmd_distance=3,
+        elmd_mode="close_to",
+        n_initial=10,
+    )
 
     print(f"\nGenerated {len(cands)} ABX3 perovskite candidates")
     print("=" * 70)
