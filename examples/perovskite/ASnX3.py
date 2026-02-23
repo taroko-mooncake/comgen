@@ -110,6 +110,7 @@ class Candidate:
     species_counts: Dict[str, int]
     stability_category: Optional[int] = None
     stability_label: Optional[str] = None
+    is_reference: bool = False
 
 # ---------------------------------------------------------------------------
 # Species space
@@ -352,6 +353,7 @@ def generate_candidates(
         Skips the discovery phase when provided.
     """
     species = build_species_space()
+    ref_candidates: List[Candidate] = []
 
     # ------------------------------------------------------------------
     # Phase 1 — discover initial candidates to use as ElMD references
@@ -362,6 +364,16 @@ def generate_candidates(
         q_init = IonicComposition(species)
         add_abx3_constraints(q_init, species)
         initial = _solve_batch(q_init, n_initial)
+        ref_candidates = [
+            Candidate(
+                elements_frac=c.elements_frac,
+                species_counts=c.species_counts,
+                stability_category=c.stability_category,
+                stability_label=c.stability_label,
+                is_reference=True,
+            )
+            for c in initial
+        ]
         refs = [pg.Composition(c.elements_frac) for c in initial]
         log.info("  Discovered %d reference compounds", len(refs))
 
@@ -383,8 +395,12 @@ def generate_candidates(
         add_onnx_stability_constraint(q, onnx_model, target_category)
 
     log.info("Generating up to %d ABX3 perovskite candidates ...", n)
-    out = _solve_batch(q, n)
+    filtered = _solve_batch(q, n)
+    log.info("  %d reference + %d filtered = %d total",
+             len(ref_candidates), len(filtered),
+             len(ref_candidates) + len(filtered))
 
+    out = ref_candidates + filtered
     out.sort(key=lambda c: (
         c.stability_category if c.stability_category is not None else 999,
     ))
@@ -400,15 +416,20 @@ OUTPUT_FILE = OUTPUT_DIR / "perovskite_ABX3_candidates.txt"
 
 def save_candidates(candidates: List[Candidate], path: Path) -> None:
     """Write candidates to a text file in the output folder."""
+    n_refs = sum(1 for c in candidates if c.is_reference)
+    n_filt = len(candidates) - n_refs
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
-        f.write(f"# ABX3 perovskite candidates ({len(candidates)} total)\n")
+        f.write(f"# ABX3 perovskite candidates "
+                f"({n_refs} reference + {n_filt} filtered = {len(candidates)} total)\n")
         for i, c in enumerate(candidates, start=1):
             stab = f"  [{c.stability_label}]" if c.stability_label else ""
-            f.write(f"\n#{i}{stab}\n")
+            ref = "  [reference]" if c.is_reference else ""
+            f.write(f"\n#{i}{ref}{stab}\n")
             f.write(f"  composition : {c.elements_frac}\n")
             f.write(f"  species     : {c.species_counts}\n")
-    log.info("Saved %d candidates to %s", len(candidates), path)
+    log.info("Saved %d candidates (%d reference, %d filtered) to %s",
+             len(candidates), n_refs, n_filt, path)
 
 
 if __name__ == "__main__":
@@ -430,11 +451,15 @@ if __name__ == "__main__":
         n_initial=10,
     )
 
-    print(f"\nGenerated {len(cands)} ABX3 perovskite candidates")
+    n_refs = sum(1 for c in cands if c.is_reference)
+    n_filt = len(cands) - n_refs
+    print(f"\nGenerated {len(cands)} ABX3 perovskite candidates "
+          f"({n_refs} reference + {n_filt} filtered)")
     print("=" * 70)
     for i, c in enumerate(cands[:20], start=1):
         stab = f"  [{c.stability_label}]" if c.stability_label else ""
-        print(f"\n#{i}{stab}")
+        ref = "  [reference]" if c.is_reference else ""
+        print(f"\n#{i}{ref}{stab}")
         print(f"  composition : {c.elements_frac}")
         print(f"  species     : {c.species_counts}")
 
