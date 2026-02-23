@@ -3,7 +3,7 @@
 Generates potential ABX3 perovskite compounds where:
   A = methylammonium (MA+) / caesium (Cs+) / formamidinium (FA+) / guanidinium (GA+)
   B = Pb / Sn / Hg / Cd / Zn / Fe / Ni / Co / In / Bi / Ti
-  X = Cl / Br
+  X = Cl / Br / I
 
 Partial substitution is allowed on all crystallographic sites (mixed occupancy).
 Stability is characterised through an ONNX model of formation energy (3-class:
@@ -71,7 +71,7 @@ B_SITE_METALS = [
     ("Ti", 4),
 ]
 
-X_SITE_HALIDES = [("Cl", -1), ("Br", -1)]
+X_SITE_HALIDES = [("Cl", -1), ("Br", -1), ("I", -1)]
 
 # ---------------------------------------------------------------------------
 # Helpers
