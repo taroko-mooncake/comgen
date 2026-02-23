@@ -53,7 +53,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 MODEL_PATH = _SCRIPT_DIR.parent / "low_formation_energy" / "ehull_1040_bn.onnx"
-DATA_DIR = _REPO_ROOT / "data"
+DATA_DIR = _SCRIPT_DIR.parent / "data"
 REFERENCE_PEROVSKITES_CSV = DATA_DIR / "reference_perovskites.csv"
 STARTING_MATERIALS_CSV = DATA_DIR / "perovskite_starting_materials.csv"
 
@@ -428,7 +428,7 @@ def generate_candidates(
         Explicit reference compositions (strings or ``pg.Composition``).
         Skips the discovery phase when provided.
     use_known_references : bool
-        If True, load known perovskites from ``data/reference_perovskites.csv``
+        If True, load known perovskites from ``examples/data/reference_perovskites.csv``
         and enforce a minimum ElMD distance from all of them.
     min_distance : float, optional
         Minimum ElMD distance from every known reference perovskite.
@@ -436,7 +436,7 @@ def generate_candidates(
         when *use_known_references* is True and *min_distance* is None.
     use_starting_materials : bool
         If True, load precursor chemicals from
-        ``data/perovskite_starting_materials.csv`` and add a synthesis
+        ``examples/data/perovskite_starting_materials.csv`` and add a synthesis
         (mass-balance) constraint so that only compositions achievable
         from those ingredients are generated.
     starting_materials_path : Path, optional
