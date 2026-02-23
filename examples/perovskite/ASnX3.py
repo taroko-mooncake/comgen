@@ -16,7 +16,7 @@ import logging
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pymatgen.core as pg
@@ -195,6 +195,33 @@ def add_onnx_stability_constraint(
     nn.select_class(target_category)
 
 # ---------------------------------------------------------------------------
+# ElMD distance constraint
+# ---------------------------------------------------------------------------
+
+REFERENCE_PEROVSKITES = [
+    "CsPbBr3",
+    "CsPbCl3",
+    "CsPbI3",
+    "CsSnBr3",
+    "CsSnCl3",
+    "CsSnI3",
+]
+
+
+def add_elmd_constraint(
+    query: IonicComposition,
+    reference_compositions: List[str],
+    max_distance: Union[float, int],
+) -> None:
+    """Require candidates to be within *max_distance* (ElMD) of at least one
+    reference composition.
+
+    A smaller *max_distance* produces candidates that are compositionally
+    closer to known perovskites; a larger value allows more novelty.
+    """
+    query.elmd_close_to_one(reference_compositions, max_distance)
+
+# ---------------------------------------------------------------------------
 # ONNX inference (post-processing)
 # ---------------------------------------------------------------------------
 
@@ -238,6 +265,8 @@ def generate_candidates(
     n: int = 100,
     use_onnx_constraint: bool = False,
     target_category: int = 0,
+    elmd_distance: Optional[float] = None,
+    reference_compositions: Optional[List[str]] = None,
 ) -> List[Candidate]:
     """Generate up to *n* ABX3 perovskite candidates.
 
@@ -252,10 +281,23 @@ def generate_candidates(
     target_category : int
         Stability class to target when *use_onnx_constraint* is True
         (0 = stable).
+    elmd_distance : float, optional
+        When set, candidates must be within this Earth Mover's Distance
+        (ElMD, on the Pettifor scale) of at least one reference composition.
+        Smaller values keep candidates close to known perovskites; larger
+        values allow more novelty.
+    reference_compositions : list of str, optional
+        Reference compositions for the ElMD constraint.  Defaults to
+        ``REFERENCE_PEROVSKITES`` when *elmd_distance* is given.
     """
     species = build_species_space()
     q = IonicComposition(species)
     add_abx3_constraints(q, species)
+
+    if elmd_distance is not None:
+        refs = reference_compositions or REFERENCE_PEROVSKITES
+        log.info("ElMD constraint: distance <= %s from %d references", elmd_distance, len(refs))
+        add_elmd_constraint(q, refs, elmd_distance)
 
     if use_onnx_constraint and onnx is not None and MODEL_PATH.exists():
         log.info("Loading ONNX model as Z3 constraint (target category=%d)", target_category)
@@ -333,7 +375,7 @@ if __name__ == "__main__":
             "(pip install onnxruntime)",
         )
 
-    cands = generate_candidates(n=50)
+    cands = generate_candidates(n=50, elmd_distance=3)
 
     print(f"\nGenerated {len(cands)} ABX3 perovskite candidates")
     print("=" * 70)
