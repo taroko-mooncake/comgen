@@ -1,53 +1,52 @@
-"""
-Runnable example: generate Li-ion compositions far from known references.
+"""Quick-start example: generate Li-ion compositions far from known references.
 
 Run from the repository root:
     python examples/run_example.py
 
 Output: examples/output/example_compositions.txt
-Data: examples/data/LiIon_reps.csv (reference compositions for EMD constraint).
+Data:   examples/data/LiIon_reps.csv (reference compositions for EMD constraint).
+
+Uses a narrower element set than Li_ion_conductors/distance_query.py for
+faster solving — intended as a first run to verify the installation works.
 """
 
 import logging
-import sys
+from csv import DictReader
 from pathlib import Path
 
-# Ensure repo root is on path when run as script (e.g. without pip install -e .)
-_script_dir = Path(__file__).resolve().parent
-_repo_root = _script_dir.parent
-if _repo_root not in sys.path:
-    sys.path.insert(0, str(_repo_root))
-
-from csv import DictReader
-
-from comgen import SpeciesCollection, IonicComposition
 import pymatgen.core as pg
 
-# Paths: relative to this file so the script works when run from repo root
-EXAMPLES_DIR = _script_dir
+from comgen import IonicComposition, SpeciesCollection
+
+EXAMPLES_DIR = Path(__file__).resolve().parent
 DATA_DIR = EXAMPLES_DIR / "data"
 OUTPUT_DIR = EXAMPLES_DIR / "output"
 OUTPUT_FILE = OUTPUT_DIR / "example_compositions.txt"
 REPS_FILE = DATA_DIR / "LiIon_reps.csv"
 
-# Query parameters
 NUM_RESULTS = 10
 EMD_MIN_DISTANCE = 5
-TOTAL_ATOMS_RANGE = (10, 15)
+TOTAL_ATOMS_LB = 10
+TOTAL_ATOMS_UB = 15
 DISTINCT_ELEMENTS_MAX = 6
 
-# Element sets for Li-ion–style compositions (narrow set for faster solving)
 LI = {"Li"}
-A = {"B", "Al", "Si", "P"}
-B = {"Mg", "Zn", "Sn", "Ga"}
-C = {"Ca", "Sr", "Y", "Zr", "Ba"}
-D = {"N", "O", "F"}
-E = {"S", "Cl", "Br", "I"}
-ELEMENTS = LI | A | B | C | D | E
+P_BLOCK = {"B", "Al", "Si", "P"}
+POST_TRANSITION = {"Mg", "Zn", "Sn", "Ga"}
+ALKALINE_AND_RARE_EARTH = {"Ca", "Sr", "Y", "Zr", "Ba"}
+LIGHT_ANIONS = {"N", "O", "F"}
+HEAVY_ANIONS = {"S", "Cl", "Br", "I"}
+
+UNWANTED_SPECIES = {
+    pg.Species("Ta", 4), pg.Species("Ta", 3),
+    pg.Species("Se", 4), pg.Species("Se", 6),
+    pg.Species("Te", 4), pg.Species("Te", 6),
+    pg.Species("Ge", 4), pg.Species("P", 3),
+}
 
 
-def load_reference_compositions(path: Path) -> list[str]:
-    """Load composition strings from CSV with header 'composition'."""
+def load_reference_compositions(path: Path) -> list:
+    """Load composition strings from a CSV with a 'composition' column."""
     with open(path, encoding="utf-8") as f:
         return [row["composition"] for row in DictReader(f)]
 
@@ -60,64 +59,47 @@ def main() -> None:
     )
     log = logging.getLogger(__name__)
 
-    # 1. Load reference compositions for the "far from all" EMD constraint
-    log.info("Loading reference compositions from %s", REPS_FILE.name)
     if not REPS_FILE.exists():
         raise FileNotFoundError(
             f"Data file not found: {REPS_FILE}. "
             "Run from repo root and ensure examples/data exists."
         )
     references = load_reference_compositions(REPS_FILE)
-    log.info("Loaded %d reference compositions", len(references))
+    log.info("Loaded %d reference compositions from %s", len(references), REPS_FILE.name)
 
-    # 2. Define allowed species (elements + oxidation states)
-    log.info("Building species collection for %d elements", len(ELEMENTS))
-    sps = SpeciesCollection.for_elements(ELEMENTS)
-    # Exclude some oxidation states to reduce search space
-    sps = sps.difference({
-        pg.Species("Ta", 4), pg.Species("Ta", 3),
-        pg.Species("Se", 4), pg.Species("Se", 6),
-        pg.Species("Te", 4), pg.Species("Te", 6),
-        pg.Species("Ge", 4), pg.Species("P", 3),
-    })
-    log.info("Species collection has %d species", len(sps))
+    elements = LI | P_BLOCK | POST_TRANSITION | ALKALINE_AND_RARE_EARTH | LIGHT_ANIONS | HEAVY_ANIONS
+    species = SpeciesCollection.for_elements(elements)
+    species = species.difference(UNWANTED_SPECIES)
 
-    # 3. Build the query and add constraints
-    log.info("Building query and adding constraints")
-    query = IonicComposition(sps)
+    query = IonicComposition(species)
 
     query.include_elements_quantity(LI, lb=0.2)
-    query.include_elements_quantity(A, lb=0.05)
-    query.include_elements_quantity(B, lb=0.05)
-    query.include_elements_quantity(C, lb=0.05)
-    query.include_elements_quantity(D, lb=0.05)
-    query.include_elements_quantity(E, lb=0.05)
+    query.include_elements_quantity(P_BLOCK, lb=0.05)
+    query.include_elements_quantity(POST_TRANSITION, lb=0.05)
+    query.include_elements_quantity(ALKALINE_AND_RARE_EARTH, lb=0.05)
+    query.include_elements_quantity(LIGHT_ANIONS, lb=0.05)
+    query.include_elements_quantity(HEAVY_ANIONS, lb=0.05)
 
     query.distinct_elements(ub=DISTINCT_ELEMENTS_MAX)
     query.elmd_far_from_all(references, EMD_MIN_DISTANCE)
-    query.total_atoms(lb=TOTAL_ATOMS_RANGE[0], ub=TOTAL_ATOMS_RANGE[1])
+    query.total_atoms(lb=TOTAL_ATOMS_LB, ub=TOTAL_ATOMS_UB)
 
-    # 4. Solve and collect results (stop when solver has no more solutions)
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     results = []
-    log.info("Solving for up to %d compositions (this may take a while)", NUM_RESULTS)
-    for i in range(NUM_RESULTS):
+    log.info("Solving for up to %d compositions ...", NUM_RESULTS)
+    for _ in range(NUM_RESULTS):
         out = query.get_next(as_frac=True)
         if out is None:
             log.info("No more solutions after %d result(s)", len(results))
             break
-        comp_dict, _ = out
-        results.append(comp_dict)
-        log.info("Found %d/%d: %s", len(results), NUM_RESULTS, comp_dict)
+        comp, _ = out
+        results.append(comp)
+        log.info("Found %d/%d: %s", len(results), NUM_RESULTS, comp)
 
-    # 5. Write output
-    log.info("Writing %d composition(s) to %s", len(results), OUTPUT_FILE)
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
-        f.write("# Compositions generated by examples/run_example.py\n")
         for r in results:
             f.write(str(r) + "\n")
-
-    log.info("Done. Output written to %s", OUTPUT_FILE)
+    log.info("Done — %d composition(s) written to %s", len(results), OUTPUT_FILE)
 
 
 if __name__ == "__main__":
