@@ -189,14 +189,14 @@ def add_abx3_constraints(query: IonicComposition, species: SpeciesCollection) ->
 
     Sum(A-site counts) = k
     Sum(B-site counts) = k
-    Sum(X-site counts) = 3k       (k = 1..4 formula units)
+    Sum(X-site counts) = 3k       (k = 1..2 formula units)
 
     Charge balance is already handled by IonicComposition.  Partial
     substitution is implicit: each individual species count >= 0 and only the
     site totals are fixed, so any mix of species on a site is permitted.
     """
     cell = UnitCell(species, query.constraints, query.return_vars)
-    cell.bound_total_atoms_count(lb=5, ub=80)
+    cell.bound_total_atoms_count(lb=5, ub=40)
     query.new_comp.fit_to_cell(cell)
 
     a_names = _a_site_names()
@@ -204,7 +204,7 @@ def add_abx3_constraints(query: IonicComposition, species: SpeciesCollection) ->
     x_names = _x_site_names()
 
     k = Int("formula_units_k")
-    query.constraints.append(And(k >= 1, k <= 4))
+    query.constraints.append(And(k >= 1, k <= 2))
 
     a_counts = [cell.species_count_vars(sp) for sp in a_names]
     b_counts = [cell.species_count_vars(sp) for sp in b_names]
@@ -367,6 +367,40 @@ def _solve_batch(
     return out
 
 
+def _select_representative_refs(
+    compositions: List[pg.Composition],
+    max_refs: int,
+) -> List[pg.Composition]:
+    """Pick a chemically diverse subset of reference compositions.
+
+    Prefers simple (fewer-element) compositions first, then selects for
+    maximum element diversity so that A-site, B-site, and halide
+    variation is preserved.
+    """
+    if max_refs <= 0:
+        return []
+    if len(compositions) <= max_refs:
+        return compositions
+
+    ranked = sorted(compositions, key=lambda c: len(c.elements))
+    selected: List[pg.Composition] = []
+    seen_elements: set = set()
+    for comp in ranked:
+        elts = frozenset(str(e) for e in comp.elements)
+        if not elts.issubset(seen_elements):
+            selected.append(comp)
+            seen_elements.update(elts)
+        if len(selected) >= max_refs:
+            break
+
+    log.info(
+        "  Reduced %d references to %d representative refs for ElMD",
+        len(compositions),
+        len(selected),
+    )
+    return selected
+
+
 def generate_candidates(
     n: int = 100,
     use_onnx_constraint: bool = False,
@@ -377,6 +411,7 @@ def generate_candidates(
     reference_compositions: Optional[list] = None,
     use_known_references: bool = False,
     min_distance: Optional[float] = None,
+    max_elmd_references: int = 5,
     use_starting_materials: bool = False,
     starting_materials_path: Optional[Path] = None,
     references_path: Optional[Path] = None,
@@ -432,8 +467,14 @@ def generate_candidates(
         and enforce a minimum ElMD distance from all of them.
     min_distance : float, optional
         Minimum ElMD distance from every known reference perovskite.
-        Only used when *use_known_references* is True.  Defaults to 3
+        Only used when *use_known_references* is True.  Defaults to 1
         when *use_known_references* is True and *min_distance* is None.
+    max_elmd_references : int
+        Cap on the number of reference compositions used for the ElMD
+        constraint.  Each reference adds ~100 Z3 variables with Abs()
+        case-splits, so large sets can overwhelm the solver.  When the
+        reference list exceeds this cap a representative subset is
+        selected automatically.  Defaults to 5.
     use_starting_materials : bool
         If True, load precursor chemicals from
         ``examples/data/perovskite_starting_materials.csv`` and add a synthesis
@@ -454,7 +495,7 @@ def generate_candidates(
         ref_path = references_path or REFERENCE_PEROVSKITES_CSV
         known_refs = load_reference_perovskites(ref_path)
         if min_distance is None:
-            min_distance = 3
+            min_distance = 1
             log.info("  min_distance not set; defaulting to %s", min_distance)
 
     ingredients: Optional[List[pg.Composition]] = None
@@ -483,11 +524,12 @@ def generate_candidates(
     add_abx3_constraints(q, species)
 
     if use_known_references and known_refs:
+        elmd_refs = _select_representative_refs(known_refs, max_elmd_references)
         log.info(
-            "Adding novelty constraint: ElMD >= %s from %d known reference perovskites",
-            min_distance, len(known_refs),
+            "Adding novelty constraint: ElMD >= %s from %d reference perovskites",
+            min_distance, len(elmd_refs),
         )
-        add_elmd_constraint(q, known_refs, min_distance, mode="far_from")
+        add_elmd_constraint(q, elmd_refs, min_distance, mode="far_from")
 
     if elmd_distance is not None and refs:
         op = ">=" if elmd_mode == "far_from" else "<="
@@ -552,7 +594,7 @@ if __name__ == "__main__":
     cands = generate_candidates(
         n=50,
         use_known_references=True,
-        min_distance=3,
+        min_distance=1,
         use_starting_materials=True,
     )
 

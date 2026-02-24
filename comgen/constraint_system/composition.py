@@ -570,7 +570,7 @@ class UnitCell:
             for sp, quant in species_quantities.items():
                 cons = self.species_count_variable_collection[str(sp)] == quant * n
                 relate_quantities_cons.append(Implies(self.num_atoms_variable == n, cons))
-            self.cons.extend(relate_quantities_cons)
+        self.cons.extend(relate_quantities_cons)
 
     def bound_total_atoms_count(self, lb, ub):
         """Set lower and upper bounds on the total number of atoms.
