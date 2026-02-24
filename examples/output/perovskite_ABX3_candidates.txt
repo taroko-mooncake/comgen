@@ -1,1 +1,201 @@
-# ABX3 perovskite candidates (0 total)
+# ABX3 perovskite candidates (50 total)
+
+#1
+  composition : {'C': 0.071, 'N': 0.214, 'H': 0.429, 'Br': 0.214, 'Ni': 0.071}
+  species     : {'(C1H6N3)+': 1, 'Br-': 3, 'Ni2+': 1}
+
+#2
+  composition : {'I': 0.4, 'Cs': 0.2, 'Cl': 0.2, 'Hg': 0.2}
+  species     : {'I-': 2, 'Cs+': 1, 'Cl-': 1, 'Hg2+': 1}
+
+#3
+  composition : {'I': 0.2, 'Cs': 0.2, 'Fe': 0.2, 'Cl': 0.4}
+  species     : {'I-': 1, 'Cs+': 1, 'Fe2+': 1, 'Cl-': 2}
+
+#4
+  composition : {'C': 0.083, 'N': 0.167, 'H': 0.417, 'Br': 0.083, 'Cl': 0.167, 'Hg': 0.083}
+  species     : {'(C1H5N2)+': 2, 'Br-': 2, 'Cl-': 4, 'Hg2+': 2}
+
+#5
+  composition : {'C': 0.053, 'N': 0.158, 'H': 0.316, 'I': 0.053, 'Cs': 0.053, 'Br': 0.211, 'Cl': 0.053, 'Hg': 0.053, 'Cd': 0.053}
+  species     : {'(C1H6N3)+': 1, 'I-': 1, 'Cs+': 1, 'Br-': 4, 'Cl-': 1, 'Hg2+': 1, 'Cd2+': 1}
+
+#6
+  composition : {'Cs': 0.2, 'Cl': 0.6, 'Cd': 0.2}
+  species     : {'Cs+': 2, 'Cl-': 6, 'Cd2+': 2}
+
+#7
+  composition : {'C': 0.083, 'N': 0.167, 'H': 0.417, 'I': 0.25, 'Fe': 0.083}
+  species     : {'(C1H5N2)+': 1, 'I-': 3, 'Fe2+': 1}
+
+#8
+  composition : {'C': 0.059, 'N': 0.118, 'H': 0.294, 'I': 0.059, 'Cs': 0.059, 'Cl': 0.294, 'Cd': 0.118}
+  species     : {'(C1H5N2)+': 1, 'I-': 1, 'Cs+': 1, 'Cl-': 5, 'Cd2+': 2}
+
+#9
+  composition : {'Sn': 0.036, 'C': 0.071, 'N': 0.214, 'H': 0.429, 'I': 0.071, 'Br': 0.107, 'Cl': 0.036, 'Hg': 0.036}
+  species     : {'Sn2+': 1, '(C1H6N3)+': 2, 'I-': 2, 'Br-': 3, 'Cl-': 1, 'Hg2+': 1}
+
+#10
+  composition : {'C': 0.059, 'N': 0.118, 'H': 0.294, 'Cs': 0.059, 'Ni': 0.118, 'Cl': 0.353}
+  species     : {'(C1H5N2)+': 1, 'Cs+': 1, 'Ni2+': 2, 'Cl-': 6}
+
+#11
+  composition : {'C': 0.059, 'N': 0.118, 'H': 0.294, 'Cs': 0.059, 'Cl': 0.353, 'Co': 0.118}
+  species     : {'(C1H5N2)+': 1, 'Cs+': 1, 'Cl-': 6, 'Co2+': 2}
+
+#12
+  composition : {'Cs': 0.2, 'Br': 0.4, 'Cl': 0.2, 'Co': 0.2}
+  species     : {'Cs+': 1, 'Br-': 2, 'Cl-': 1, 'Co2+': 1}
+
+#13
+  composition : {'Cs': 0.2, 'Br': 0.6, 'Ni': 0.2}
+  species     : {'Cs+': 1, 'Br-': 3, 'Ni2+': 1}
+
+#14
+  composition : {'C': 0.059, 'N': 0.118, 'H': 0.294, 'I': 0.176, 'Cs': 0.059, 'Ni': 0.118, 'Cl': 0.176}
+  species     : {'(C1H5N2)+': 1, 'I-': 3, 'Cs+': 1, 'Ni2+': 2, 'Cl-': 3}
+
+#15
+  composition : {'I': 0.2, 'Cs': 0.2, 'Br': 0.2, 'Cl': 0.2, 'Co': 0.2}
+  species     : {'I-': 1, 'Cs+': 1, 'Br-': 1, 'Cl-': 1, 'Co2+': 1}
+
+#16
+  composition : {'Cs': 0.2, 'Ni': 0.2, 'Cl': 0.6}
+  species     : {'Cs+': 1, 'Ni2+': 1, 'Cl-': 3}
+
+#17
+  composition : {'Cs': 0.2, 'Br': 0.6, 'Hg': 0.2}
+  species     : {'Cs+': 1, 'Br-': 3, 'Hg2+': 1}
+
+#18
+  composition : {'C': 0.059, 'N': 0.118, 'H': 0.294, 'Zn': 0.059, 'Cs': 0.059, 'Fe': 0.059, 'Cl': 0.353}
+  species     : {'(C1H5N2)+': 1, 'Zn2+': 1, 'Cs+': 1, 'Fe2+': 1, 'Cl-': 6}
+
+#19
+  composition : {'Zn': 0.2, 'I': 0.4, 'Cs': 0.2, 'Cl': 0.2}
+  species     : {'Zn2+': 1, 'I-': 2, 'Cs+': 1, 'Cl-': 1}
+
+#20
+  composition : {'C': 0.053, 'N': 0.158, 'H': 0.316, 'Cs': 0.053, 'Br': 0.105, 'Cl': 0.211, 'Co': 0.105}
+  species     : {'(C1H6N3)+': 1, 'Cs+': 1, 'Br-': 2, 'Cl-': 4, 'Co2+': 2}
+
+#21
+  composition : {'Cs': 0.2, 'Cl': 0.6, 'Co': 0.2}
+  species     : {'Cs+': 1, 'Cl-': 3, 'Co2+': 1}
+
+#22
+  composition : {'I': 0.2, 'Cs': 0.2, 'Br': 0.2, 'Fe': 0.2, 'Cl': 0.2}
+  species     : {'I-': 1, 'Cs+': 1, 'Br-': 1, 'Fe2+': 1, 'Cl-': 1}
+
+#23
+  composition : {'C': 0.053, 'N': 0.158, 'H': 0.316, 'Cs': 0.053, 'Br': 0.316, 'Hg': 0.053, 'Cd': 0.053}
+  species     : {'(C1H6N3)+': 1, 'Cs+': 1, 'Br-': 6, 'Hg2+': 1, 'Cd2+': 1}
+
+#24
+  composition : {'I': 0.6, 'Cs': 0.2, 'Ni': 0.2}
+  species     : {'I-': 3, 'Cs+': 1, 'Ni2+': 1}
+
+#25
+  composition : {'Cs': 0.2, 'Cl': 0.6, 'Hg': 0.2}
+  species     : {'Cs+': 1, 'Cl-': 3, 'Hg2+': 1}
+
+#26
+  composition : {'I': 0.2, 'Cs': 0.2, 'Ni': 0.2, 'Cl': 0.4}
+  species     : {'I-': 1, 'Cs+': 1, 'Ni2+': 1, 'Cl-': 2}
+
+#27
+  composition : {'I': 0.2, 'Cs': 0.2, 'Cl': 0.4, 'Hg': 0.2}
+  species     : {'I-': 1, 'Cs+': 1, 'Cl-': 2, 'Hg2+': 1}
+
+#28
+  composition : {'Zn': 0.2, 'Cs': 0.2, 'Cl': 0.6}
+  species     : {'Zn2+': 1, 'Cs+': 1, 'Cl-': 3}
+
+#29
+  composition : {'I': 0.4, 'Cs': 0.2, 'Br': 0.2, 'Co': 0.2}
+  species     : {'I-': 2, 'Cs+': 1, 'Br-': 1, 'Co2+': 1}
+
+#30
+  composition : {'Sn': 0.118, 'C': 0.059, 'N': 0.059, 'H': 0.353, 'I': 0.353, 'Cs': 0.059}
+  species     : {'Sn2+': 2, '(C1H6N1)+': 1, 'I-': 6, 'Cs+': 1}
+
+#31
+  composition : {'C': 0.053, 'N': 0.158, 'H': 0.316, 'Cs': 0.053, 'Br': 0.105, 'Cl': 0.211, 'Hg': 0.105}
+  species     : {'(C1H6N3)+': 1, 'Cs+': 1, 'Br-': 2, 'Cl-': 4, 'Hg2+': 2}
+
+#32
+  composition : {'Sn': 0.1, 'I': 0.3, 'Cs': 0.2, 'Br': 0.3, 'Co': 0.1}
+  species     : {'Sn2+': 1, 'I-': 3, 'Cs+': 2, 'Br-': 3, 'Co2+': 1}
+
+#33
+  composition : {'I': 0.6, 'Cs': 0.2, 'Co': 0.2}
+  species     : {'I-': 3, 'Cs+': 1, 'Co2+': 1}
+
+#34
+  composition : {'Zn': 0.2, 'Cs': 0.2, 'Br': 0.6}
+  species     : {'Zn2+': 1, 'Cs+': 1, 'Br-': 3}
+
+#35
+  composition : {'Cs': 0.2, 'Fe': 0.2, 'Cl': 0.6}
+  species     : {'Cs+': 1, 'Fe2+': 1, 'Cl-': 3}
+
+#36
+  composition : {'Pb': 0.1, 'I': 0.6, 'Cs': 0.2, 'Fe': 0.1}
+  species     : {'Pb2+': 1, 'I-': 6, 'Cs+': 2, 'Fe2+': 1}
+
+#37
+  composition : {'Sn': 0.1, 'I': 0.1, 'Cs': 0.2, 'Br': 0.5, 'Co': 0.1}
+  species     : {'Sn2+': 1, 'I-': 1, 'Cs+': 2, 'Br-': 5, 'Co2+': 1}
+
+#38
+  composition : {'I': 0.4, 'Cs': 0.2, 'Ni': 0.2, 'Cl': 0.2}
+  species     : {'I-': 2, 'Cs+': 1, 'Ni2+': 1, 'Cl-': 1}
+
+#39
+  composition : {'Sn': 0.059, 'C': 0.059, 'N': 0.118, 'H': 0.294, 'I': 0.176, 'Cs': 0.059, 'Br': 0.118, 'Fe': 0.059, 'Cl': 0.059}
+  species     : {'Sn2+': 1, '(C1H5N2)+': 1, 'I-': 3, 'Cs+': 1, 'Br-': 2, 'Fe2+': 1, 'Cl-': 1}
+
+#40
+  composition : {'C': 0.053, 'N': 0.158, 'H': 0.316, 'Cs': 0.053, 'Br': 0.158, 'Ni': 0.105, 'Cl': 0.158}
+  species     : {'(C1H6N3)+': 1, 'Cs+': 1, 'Br-': 3, 'Ni2+': 2, 'Cl-': 3}
+
+#41
+  composition : {'I': 0.4, 'Cs': 0.2, 'Cl': 0.2, 'Co': 0.2}
+  species     : {'I-': 2, 'Cs+': 1, 'Cl-': 1, 'Co2+': 1}
+
+#42
+  composition : {'I': 0.3, 'Cs': 0.2, 'Br': 0.1, 'Ni': 0.1, 'Cl': 0.2, 'Hg': 0.1}
+  species     : {'I-': 3, 'Cs+': 2, 'Br-': 1, 'Ni2+': 1, 'Cl-': 2, 'Hg2+': 1}
+
+#43
+  composition : {'I': 0.2, 'Cs': 0.2, 'Cl': 0.4, 'Cd': 0.2}
+  species     : {'I-': 1, 'Cs+': 1, 'Cl-': 2, 'Cd2+': 1}
+
+#44
+  composition : {'Zn': 0.2, 'I': 0.2, 'Cs': 0.2, 'Cl': 0.4}
+  species     : {'Zn2+': 1, 'I-': 1, 'Cs+': 1, 'Cl-': 2}
+
+#45
+  composition : {'C': 0.083, 'N': 0.083, 'H': 0.5, 'I': 0.083, 'Br': 0.167, 'Ni': 0.083}
+  species     : {'(C1H6N1)+': 1, 'I-': 1, 'Br-': 2, 'Ni2+': 1}
+
+#46
+  composition : {'C': 0.053, 'N': 0.158, 'H': 0.316, 'I': 0.316, 'Cs': 0.053, 'Ni': 0.053, 'Hg': 0.053}
+  species     : {'(C1H6N3)+': 1, 'I-': 6, 'Cs+': 1, 'Ni2+': 1, 'Hg2+': 1}
+
+#47
+  composition : {'I': 0.1, 'Cs': 0.2, 'Br': 0.3, 'Ni': 0.2, 'Cl': 0.2}
+  species     : {'I-': 1, 'Cs+': 2, 'Br-': 3, 'Ni2+': 2, 'Cl-': 2}
+
+#48
+  composition : {'Sn': 0.1, 'I': 0.1, 'Cs': 0.2, 'Br': 0.1, 'Cl': 0.4, 'Co': 0.1}
+  species     : {'Sn2+': 1, 'I-': 1, 'Cs+': 2, 'Br-': 1, 'Cl-': 4, 'Co2+': 1}
+
+#49
+  composition : {'I': 0.1, 'Cs': 0.2, 'Br': 0.2, 'Cl': 0.3, 'Hg': 0.2}
+  species     : {'I-': 1, 'Cs+': 2, 'Br-': 2, 'Cl-': 3, 'Hg2+': 2}
+
+#50
+  composition : {'Cs': 0.2, 'Br': 0.3, 'Fe': 0.1, 'Cl': 0.3, 'Co': 0.1}
+  species     : {'Cs+': 2, 'Br-': 3, 'Fe2+': 1, 'Cl-': 3, 'Co2+': 1}
