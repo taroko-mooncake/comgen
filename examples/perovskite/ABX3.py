@@ -377,6 +377,8 @@ def _select_representative_refs(
     maximum element diversity so that A-site, B-site, and halide
     variation is preserved.
     """
+    if max_refs <= 0:
+        return []
     if len(compositions) <= max_refs:
         return compositions
 
@@ -385,7 +387,7 @@ def _select_representative_refs(
     seen_elements: set = set()
     for comp in ranked:
         elts = frozenset(str(e) for e in comp.elements)
-        if not elts.issubset(seen_elements) or len(selected) < max_refs:
+        if not elts.issubset(seen_elements):
             selected.append(comp)
             seen_elements.update(elts)
         if len(selected) >= max_refs:
