@@ -220,7 +220,7 @@ python3 examples/Mg_ion_conductors/distance_query.py
 Generates Mg-ion compositions with ion-pair radius ratios typical of Li6PS5Cl-like structures: Mg-cation ratio 1.55-1.85, Mg-anion ratio 0.45-0.55. Uses fixed 13-atom stoichiometry.
 
 ```bash
-python3 examples/Mg_ion_conductors/like_ratio_query.py
+python3 examples/Mg_ion_conductors/01_like_ratio_query.py
 ```
 
 | Parameter | Value |
@@ -236,7 +236,7 @@ python3 examples/Mg_ion_conductors/like_ratio_query.py
 Same radius-ratio constraints as above but with relaxed composition bounds: Mg between 3/13 and 6/13, cations >= 1/13, anion fraction unconstrained.
 
 ```bash
-python3 examples/Mg_ion_conductors/like_ratio_query_2.py
+python3 examples/Mg_ion_conductors/02_like_ratio_query.py
 ```
 
 | Parameter | Value |
@@ -249,7 +249,7 @@ python3 examples/Mg_ion_conductors/like_ratio_query_2.py
 Loops over total atom counts 10-13 and generates compositions for each size with Li6PS5Cl-like stoichiometry. Appends all results to a single file.
 
 ```bash
-python3 examples/Mg_ion_conductors/like_ratio_query_3.py
+python3 examples/Mg_ion_conductors/03_like_ratio_query.py
 ```
 
 | Parameter | Value |
@@ -289,10 +289,11 @@ Generates ABX3 organic-inorganic perovskite candidates with partial substitution
 - **B-site**: Pb2+, Sn2+, Hg2+, Cd2+, Zn2+, Fe2+, Ni2+, Co2+, In3+, Bi3+, Ti4+
 - **X-site**: Cl-, Br-, I-
 
-The script enforces ABX3 stoichiometry (Sum(A) = k, Sum(B) = k, Sum(X) = 3k for k = 1..4 formula units) with charge balance and supports:
+The script enforces ABX3 stoichiometry (`Sum(A) = k`, `Sum(B) = k`, `Sum(X) = 3k` for `k = 1..2` formula units) with charge balance and supports:
 
-- **Novelty constraint**: ElMD >= 3 from known reference perovskites (`examples/data/reference_perovskites.csv`)
+- **Novelty constraint**: ElMD >= 1 from known reference perovskites (`examples/data/reference_perovskites.csv`)
 - **Synthesis constraint**: compositions must be achievable from known starting materials (`examples/data/perovskite_starting_materials.csv`)
+- **Site cardinality constraint**: at most N distinct species simultaneously active on each site (default `max_species_per_site=2`), controlled by Bool presence indicators and site-specific big-M bounds. This tightens the integer search space so that more ElMD reference compounds can be used without overwhelming the solver.
 - **ONNX stability filter** (optional): predicted stability category via a formation-energy classifier
 
 ```bash
@@ -302,22 +303,38 @@ python3 examples/perovskite/ABX3.py
 | Parameter | Value |
 |-----------|-------|
 | Data files | `examples/data/reference_perovskites.csv`, `examples/data/perovskite_starting_materials.csv` |
-| Formula units | 1 - 4 |
-| Total atoms | 5 - 80 |
-| Novelty | ElMD >= 3 from all known references |
+| Formula units `k` | 1 - 2 |
+| Total atoms | 5 - 40 |
+| Novelty | ElMD >= 1 from all reference perovskites in the CSV |
+| Site cardinality | at most 2 distinct species per site (A, B, X) — binary mixing allowed |
 | Synthesis | constrained to known starting materials |
 | Max candidates | 50 |
 | ONNX model (optional) | `examples/low_formation_energy/ehull_1040_bn.onnx` |
 | Output | `examples/output/perovskite_ABX3_candidates.txt` |
 
+#### Key constraint: per-site species cardinality
+
+Each ABX3 site has an integer count variable per allowed species. Without a cardinality limit, Z3 explores a very wide integer lattice when combined with ElMD `Abs()` case-splits (103 per reference). The `add_site_cardinality_constraints()` helper introduces a Z3 `Bool` presence indicator `present_<sp>` for each species and constrains:
+
+```
+count_s <= M_site * present_s    # count is zero when not present
+present_s  =>  count_s >= 1      # indicator is forced True when present
+Sum(present_s for s on site) <= max_species_per_site
+```
+
+Site-specific big-M values (`M = 2` for A/B-sites, `M = 6` for X-site) are derived from the maximum formula-unit count. With `max_species_per_site=2` this reduces the effective site combinations from unbounded to 6 / 55 / 6 for the A / B / X sites respectively, making each ElMD reference ~8× cheaper to resolve.
+
+To disable the cardinality constraint entirely, pass `max_species_per_site` equal to the total number of species on each site (4 / 11 / 3).
+
 **Expected output format:**
 
 ```
-# ABX3 perovskite candidates (17 total)
+# ABX3 perovskite candidates (49 total)
 
-#1
-  composition : {'Ni': 0.019, 'C': 0.074, 'N': 0.185, ...}
-  species     : {'Ni2+': 1, '(C1H6N1)+': 1, 'Cl-': 4, 'Br-': 7, ...}
+#1  [stable]
+  formula     : (C1H6N3)+2(Sn2+ Fe2+)Cl-6
+  composition : {'Sn': 0.036, 'Fe': 0.036, 'C': 0.071, ...}
+  species     : {'Sn2+': 1, 'Fe2+': 1, '(C1H6N3)+': 2, 'Cl-': 6}
 ```
 
 > **Note:** The perovskite example requires the CSV files in the `examples/data/` directory. These are included in the repository. If the ONNX model file is not present, stability will not be characterised but candidate generation still works.

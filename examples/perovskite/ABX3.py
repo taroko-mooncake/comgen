@@ -24,7 +24,7 @@ from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pymatgen.core as pg
-from z3 import Int, Sum, And, RealVal
+from z3 import Bool, If, Implies, Int, Sum, And, RealVal
 
 from comgen import SpeciesCollection, PolyAtomicSpecies
 from comgen.query.ionic import IonicComposition
@@ -111,6 +111,41 @@ def _species_label(varname: str) -> str:
     return after_prefix.rsplit("_speciescount", 1)[0]
 
 
+def _abx3_formula(species_counts: Dict[str, int]) -> str:
+    """Format species counts as a compact ABX3-style chemical formula.
+
+    Species are grouped by site (A / B / X) and rendered with subscript
+    counts only where the count is greater than 1.  Mixed sites are written
+    as parenthesised sums, e.g. ``(MA FA)(Pb Sn)X3``.
+    """
+    a_names = _a_site_names()
+    b_names = _b_site_names()
+    x_names = _x_site_names()
+
+    a_parts: List[str] = []
+    b_parts: List[str] = []
+    x_parts: List[str] = []
+
+    for species, count in species_counts.items():
+        suffix = str(count) if count > 1 else ""
+        token = f"{species}{suffix}"
+        if species in a_names:
+            a_parts.append(token)
+        elif species in b_names:
+            b_parts.append(token)
+        elif species in x_names:
+            x_parts.append(token)
+
+    def _join(parts: List[str]) -> str:
+        if not parts:
+            return "?"
+        if len(parts) == 1:
+            return parts[0]
+        return "(" + " ".join(parts) + ")"
+
+    return f"{_join(a_parts)}{_join(b_parts)}{_join(x_parts)}"
+
+
 @dataclass(frozen=True)
 class Candidate:
     elements_frac: Dict[str, float]
@@ -184,7 +219,61 @@ def build_species_space() -> SpeciesCollection:
 # Constraints
 # ---------------------------------------------------------------------------
 
-def add_abx3_constraints(query: IonicComposition, species: SpeciesCollection) -> None:
+def add_site_cardinality_constraints(
+    query: IonicComposition,
+    cell: UnitCell,
+    max_per_site: int = 2,
+) -> None:
+    """Limit the number of distinct species active on each ABX3 site.
+
+    For each species *s* on a site a Bool indicator ``present_<s>`` is
+    introduced and linked to the integer count variable via big-M constraints:
+
+        count_s <= M_site * present_s   (count_s == 0 when not present)
+        present_s => count_s >= 1       (indicator is True only if present)
+
+    The site-specific big-M values are tight upper bounds derived from the
+    maximum formula-unit count (k <= 2):
+
+        A-site  M = 2   (Sum(A counts) == k <= 2)
+        B-site  M = 2   (Sum(B counts) == k <= 2)
+        X-site  M = 6   (Sum(X counts) == 3k <= 6)
+
+    The cardinality constraint ``Sum(present_s) <= max_per_site`` over every
+    site then bounds the number of simultaneously occupied species, reducing
+    the integer search space that Z3 must explore for each ElMD Abs() branch.
+
+    Parameters
+    ----------
+    query : IonicComposition
+        The active query whose constraint list is extended.
+    cell : UnitCell
+        The unit cell whose species count variables are used.
+    max_per_site : int
+        Maximum number of distinct species allowed on any single site.
+        Defaults to 2 (allows binary mixing, e.g. MA/Cs on A-site).
+    """
+    site_configs = [
+        (_a_site_names(), 2),   # A-site: k <= 2
+        (_b_site_names(), 2),   # B-site: k <= 2
+        (_x_site_names(), 6),   # X-site: 3k <= 6
+    ]
+    for site_names, M in site_configs:
+        indicators = []
+        for sp_name in site_names:
+            b = Bool(f"present_{sp_name}")
+            count = cell.species_count_vars(sp_name)
+            query.constraints.append(count <= M * If(b, 1, 0))
+            query.constraints.append(Implies(count >= 1, b))
+            indicators.append(If(b, 1, 0))
+        query.constraints.append(Sum(indicators) <= max_per_site)
+
+
+def add_abx3_constraints(
+    query: IonicComposition,
+    species: SpeciesCollection,
+    max_species_per_site: int = 2,
+) -> None:
     """Enforce ABX3 stoichiometry with partial substitution on every site.
 
     Sum(A-site counts) = k
@@ -194,6 +283,21 @@ def add_abx3_constraints(query: IonicComposition, species: SpeciesCollection) ->
     Charge balance is already handled by IonicComposition.  Partial
     substitution is implicit: each individual species count >= 0 and only the
     site totals are fixed, so any mix of species on a site is permitted.
+
+    The ``max_species_per_site`` cardinality constraint further limits how many
+    distinct species may be simultaneously active on each site, tightening the
+    integer search space and allowing more ElMD reference compounds to be used
+    without overwhelming the solver.
+
+    Parameters
+    ----------
+    query : IonicComposition
+        The active query whose constraint list is extended.
+    species : SpeciesCollection
+        Full species space (A + B + X site species).
+    max_species_per_site : int
+        Maximum number of distinct species active on any single site.
+        Defaults to 2.
     """
     cell = UnitCell(species, query.constraints, query.return_vars)
     cell.bound_total_atoms_count(lb=5, ub=40)
@@ -213,6 +317,8 @@ def add_abx3_constraints(query: IonicComposition, species: SpeciesCollection) ->
     query.constraints.append(Sum(a_counts) == k)
     query.constraints.append(Sum(b_counts) == k)
     query.constraints.append(Sum(x_counts) == 3 * k)
+
+    add_site_cardinality_constraints(query, cell, max_per_site=max_species_per_site)
 
 
 def add_onnx_stability_constraint(
@@ -367,38 +473,6 @@ def _solve_batch(
     return out
 
 
-def _select_representative_refs(
-    compositions: List[pg.Composition],
-    max_refs: int,
-) -> List[pg.Composition]:
-    """Pick a chemically diverse subset of reference compositions.
-
-    Prefers simple (fewer-element) compositions first, then selects for
-    maximum element diversity so that A-site, B-site, and halide
-    variation is preserved.
-    """
-    if max_refs <= 0:
-        return []
-    if len(compositions) <= max_refs:
-        return compositions
-
-    ranked = sorted(compositions, key=lambda c: len(c.elements))
-    selected: List[pg.Composition] = []
-    seen_elements: set = set()
-    for comp in ranked:
-        elts = frozenset(str(e) for e in comp.elements)
-        if not elts.issubset(seen_elements):
-            selected.append(comp)
-            seen_elements.update(elts)
-        if len(selected) >= max_refs:
-            break
-
-    log.info(
-        "  Reduced %d references to %d representative refs for ElMD",
-        len(compositions),
-        len(selected),
-    )
-    return selected
 
 
 def generate_candidates(
@@ -411,10 +485,10 @@ def generate_candidates(
     reference_compositions: Optional[list] = None,
     use_known_references: bool = False,
     min_distance: Optional[float] = None,
-    max_elmd_references: int = 5,
     use_starting_materials: bool = False,
     starting_materials_path: Optional[Path] = None,
     references_path: Optional[Path] = None,
+    max_species_per_site: int = 2,
 ) -> List[Candidate]:
     """Generate up to *n* ABX3 perovskite candidates.
 
@@ -469,12 +543,13 @@ def generate_candidates(
         Minimum ElMD distance from every known reference perovskite.
         Only used when *use_known_references* is True.  Defaults to 1
         when *use_known_references* is True and *min_distance* is None.
-    max_elmd_references : int
-        Cap on the number of reference compositions used for the ElMD
-        constraint.  Each reference adds ~100 Z3 variables with Abs()
-        case-splits, so large sets can overwhelm the solver.  When the
-        reference list exceeds this cap a representative subset is
-        selected automatically.  Defaults to 5.
+    max_species_per_site : int
+        Maximum number of distinct species simultaneously active on any
+        single ABX3 site (A, B, or X).  Introducing Bool presence indicators
+        with this bound tightens the integer domain, allowing the solver to
+        propagate ElMD Abs() case-splits far more efficiently.  Set to the
+        number of site species (4 / 11 / 3) to disable the cardinality
+        constraint entirely.  Defaults to 2.
     use_starting_materials : bool
         If True, load precursor chemicals from
         ``examples/data/perovskite_starting_materials.csv`` and add a synthesis
@@ -512,7 +587,7 @@ def generate_candidates(
     if elmd_distance is not None and refs is None and not use_known_references:
         log.info("Phase 1: discovering %d initial candidates as ElMD references ...", n_initial)
         q_init = IonicComposition(species)
-        add_abx3_constraints(q_init, species)
+        add_abx3_constraints(q_init, species, max_species_per_site=max_species_per_site)
         initial = _solve_batch(q_init, n_initial)
         refs = [pg.Composition(c.elements_frac) for c in initial]
         log.info("  Discovered %d reference compounds", len(refs))
@@ -521,15 +596,14 @@ def generate_candidates(
     # Phase 2 — generate with all constraints
     # ------------------------------------------------------------------
     q = IonicComposition(species)
-    add_abx3_constraints(q, species)
+    add_abx3_constraints(q, species, max_species_per_site=max_species_per_site)
 
     if use_known_references and known_refs:
-        elmd_refs = _select_representative_refs(known_refs, max_elmd_references)
         log.info(
             "Adding novelty constraint: ElMD >= %s from %d reference perovskites",
-            min_distance, len(elmd_refs),
+            min_distance, len(known_refs),
         )
-        add_elmd_constraint(q, elmd_refs, min_distance, mode="far_from")
+        add_elmd_constraint(q, known_refs, min_distance, mode="far_from")
 
     if elmd_distance is not None and refs:
         op = ">=" if elmd_mode == "far_from" else "<="
@@ -574,6 +648,7 @@ def save_candidates(candidates: List[Candidate], path: Path) -> None:
         for i, c in enumerate(candidates, start=1):
             stab = f"  [{c.stability_label}]" if c.stability_label else ""
             f.write(f"\n#{i}{stab}\n")
+            f.write(f"  formula     : {_abx3_formula(c.species_counts)}\n")
             f.write(f"  composition : {c.elements_frac}\n")
             f.write(f"  species     : {c.species_counts}\n")
     log.info("Saved %d candidates to %s", len(candidates), path)
@@ -596,6 +671,7 @@ if __name__ == "__main__":
         use_known_references=True,
         min_distance=1,
         use_starting_materials=True,
+        max_species_per_site=2,
     )
 
     print(f"\nGenerated {len(cands)} ABX3 perovskite candidates")
@@ -603,6 +679,7 @@ if __name__ == "__main__":
     for i, c in enumerate(cands[:20], start=1):
         stab = f"  [{c.stability_label}]" if c.stability_label else ""
         print(f"\n#{i}{stab}")
+        print(f"  formula     : {_abx3_formula(c.species_counts)}")
         print(f"  composition : {c.elements_frac}")
         print(f"  species     : {c.species_counts}")
 
